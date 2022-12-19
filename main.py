@@ -5,6 +5,7 @@ from types import SimpleNamespace as SN
 import json
 import pickle
 import shutil
+from glob import glob
 
 ## standard scipy
 import ipdb
@@ -31,6 +32,15 @@ from segtools.point_matcher import match_unambiguous_nearestNeib as snnMatch
 from segtools import torch_models
 from segtools.cpnet_utils import createTarget, splitIntoPatches
 
+"""
+RUN ME ON SLURM!!
+sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/e23-mau.out -e slurm_err/e23-mau.out --wrap '/bin/time -v python e23_mauricio2.py'
+"""
+
+# savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
+# savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
+# savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
+savedir = Path("data/")
 
 def load_tif(name): return imread(name) 
 def load_pkl(name): 
@@ -65,16 +75,6 @@ def plotHistory():
   ax[2+1].plot(valis[:,2], label="height")
   ax[2+1].legend()
 
-
-"""
-RUN ME ON SLURM!!
-sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/e23-mau.out -e slurm_err/e23-mau.out --wrap '/bin/time -v python e23_mauricio2.py'
-"""
-
-# savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
-# savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
-# savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
-savedir = Path("data/")
 
 def wipedir(path):
   path = Path(path)
@@ -171,14 +171,23 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
+"""Parameters for data(), train(), and predict()"""
 def params():
   D = SN()
 
+  ## data, predict
+  D.name_raw = "Fluo-C2DL-Huh7/01/t{time:03d}.tif"
+  D.name_pts = "Fluo-C2DL-Huh7/01_GT/TRA/man_track{time:03d}.tif"
+  D.zoom = (0.5,0.5)
+
+  ## train, predict
+  D.nms_footprint = [5,5]
+
   ## data
-  D.outer_shape_train = (256,256)
-  D.min_border_shape_train = (24,24)
+  D.outer_shape_train = (128,128)
+  D.min_border_shape_train = (16,16)
   D.sigma = (5,5)
-  D.traintimes = range(25)
+  D.traintimes = [0] #range(25)
 
   ## train
   D.border = [0,0]
@@ -188,15 +197,19 @@ def params():
 
   ## predict
   D.mode = 'NoGT' ## 'withGT'
-  D.predtimes = range(29,30)
+  D.predtimes = [29] #range(29,30)
 
-  ## data, predict
-  D.zoom  = (0.5,0.5)
+  ## ------------------------------------------------
 
-  ## train, predict
-  D.nms_footprint = [5,5]
+  ## data-01/
+  # D.outer_shape_train = (128,128)
+  # D.min_border_shape_train = (16,16)
+
+  D.outer_shape_train = (64,64)
+  D.min_border_shape_train = (0,0)
 
   return D
+
 
 """
 Tiling patches with overlapping borders. Requires loss masking.
@@ -206,15 +219,9 @@ def data_v03():
 
   D = params()
 
-  n_raw   = "Fluo-C2DL-Huh7/01/t{time:03d}.tif"
-  n_pts   = "Fluo-C2DL-Huh7/01_GT/TRA/man_track{time:03d}.tif"
-  # n_class = "/projects/project-broaddus/rawdata/ZFishMau2021/anno/class{time}.pkl"
-
-  # patches = splitIntoPatches(load_tif(n_raw.format(time=0)).shape, outer_shape=(256,256), min_border_shape=(24,24))
-
   def f(i):
-    raw = load_tif(n_raw.format(time=i)) #.transpose([1,0,2,3])
-    lab = load_tif(n_pts.format(time=i)) #.transpose([])
+    raw = load_tif(D.name_raw.format(time=i)) #.transpose([1,0,2,3])
+    lab = load_tif(D.name_pts.format(time=i)) #.transpose([])
     pts = np.array([x['centroid'] for x in regionprops(lab)])
     raw = zoom(raw, D.zoom, order=1)
     # lab = zoom(lab, D.zoom, order=1)
@@ -236,7 +243,7 @@ def data_v03():
   save_pkl("dataset.pkl", data)
 
   ## save train/vali/test data
-  wipedir(savedir/"png/")
+  wipedir(savedir/"data/png/")
   for i,s in enumerate(data[::10]):
     r = img2png(s.raw)
     t = img2png(s.target, colors=plt.cm.magma)
@@ -272,8 +279,8 @@ def train(dataset=None,continue_training=False):
 
   # ipdb.set_trace()
 
-  if str(device)=='cpu':
-    dataset = dataset[::23]
+  # if str(device)=='cpu':
+  #   dataset = dataset[::23]
 
   ## load weights and sample train/vali assignment from disk?
   if CONTINUE:
@@ -285,12 +292,13 @@ def train(dataset=None,continue_training=False):
     wipedir(savedir/"train/glance_output_train/")
     wipedir(savedir/"train/glance_output_vali/")
     N = len(dataset)
-    a, b = (N*5)//8, (N*7)//8  ## MYPARAM train / vali / test 
+    # a, b = (N*5)//8, (N*7)//8  ## MYPARAM train / vali / test 
+    a = (N*7)//8 ## don't use test patches. test on full images.
     labels = np.zeros(N,dtype=np.uint8)
-    labels[a:b]=1; labels[b:]=2 ## 0=train 1=vali 2=test
+    labels[a:]=1; ## labels[b:]=2 ## 0=train 1=vali 2=test
     np.random.shuffle(labels)
     save_pkl(savedir / "train/labels.pkl", labels)
-    history = SimpleNamespace(lossmeans=[],valimeans=[],)
+    history = SN(lossmeans=[], valimeans=[])
 
   assert len(dataset)>8
   assert len(labels)==len(dataset)
@@ -504,9 +512,6 @@ def predict():
 
   wipedir(savedir / "predict")
 
-  n_raw   = "Fluo-C2DL-Huh7/01/t{time:03d}.tif"
-  n_pts   = "Fluo-C2DL-Huh7/01_GT/TRA/man_track{time:03d}.tif"
-
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   net = torch_models.Unet3(16, [[1],[1]], pool=(2,2),   kernsize=(5,5),   finallayer=torch_models.nn.Sequential)
   net = net.to(device)
@@ -514,12 +519,12 @@ def predict():
   D = params()
 
   def predsingle(time):
-    raw = load_tif(n_raw.format(time=i)) #.transpose([1,0,2,3])[1]
+    raw = load_tif(D.name_raw.format(time=i)) #.transpose([1,0,2,3])[1]
     raw = zoom(raw, D.zoom,order=1)
     raw = norm_percentile01(raw,2,99.4)
 
     if D.mode=='withGT':
-      lab = load_tif(n_pts.format(time=i)) #.transpose([])
+      lab = load_tif(D.name_pts.format(time=i)) #.transpose([])
       pts = np.array([x['centroid'] for x in regionprops(lab)])
       gtpts = [p for i,p in enumerate(gtpts) if classes[i] in ['p','pm']]
       gtpts = (np.array(gtpts) * D.zoom).astype(np.int)
