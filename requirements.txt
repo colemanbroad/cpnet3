@@ -1,0 +1,10 @@
+## standard scipy
+
+ipdb
+matplotlib
+numpy
+pykdtree
+scikit-image
+scipy
+tifffile
+torch
