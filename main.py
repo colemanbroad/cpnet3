@@ -41,7 +41,7 @@ sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slur
 # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
 # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
 # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
-savedir = Path("data/")
+savedir = Path("data/Fluo-N2DH-GOWT1/")
 
 def load_tif(name): return imread(name) 
 def load_pkl(name): 
@@ -274,9 +274,10 @@ def params():
   D = SN()
 
   ## data, predict
-  D.name_raw = "Fluo-C2DL-Huh7/01/t{time:03d}.tif"
-  D.name_pts = "Fluo-C2DL-Huh7/01_GT/TRA/man_track{time:03d}.tif"
-  D.zoom = (0.5,0.5)
+  base = "/lustre/projects/project-broaddus/rawdata/GOWT1/Fluo-N2DH-GOWT1/"
+  D.name_raw = base + "01/t{time:03d}.tif"
+  D.name_pts = base + "01_GT/TRA/man_track{time:03d}.tif"
+  D.zoom = (0.25,0.25)
 
   ## train, predict
   D.nms_footprint = [5,5]
@@ -285,7 +286,7 @@ def params():
   D.outer_shape_train = (128,128)
   D.min_border_shape_train = (16,16)
   D.sigma = (5,5)
-  D.traintimes = [0] #range(25)
+  D.traintimes = range(0,91,5)
 
   ## train
   D.border = [0,0]
@@ -295,7 +296,7 @@ def params():
 
   ## predict
   D.mode = 'NoGT' ## 'withGT'
-  D.predtimes = [29] #range(29,30)
+  D.predtimes = range(3,91,5)
 
   ## ------------------------------------------------
 
@@ -303,8 +304,8 @@ def params():
   # D.outer_shape_train = (128,128)
   # D.min_border_shape_train = (16,16)
 
-  D.outer_shape_train = (64,64)
-  D.min_border_shape_train = (0,0)
+  # D.outer_shape_train = (64,64)
+  # D.min_border_shape_train = (0,0)
 
   return D
 
@@ -531,10 +532,10 @@ def train(dataset=None,continue_training=False):
       return y, scores
 
     if mode=='glance':
-      r = img2png(x.numpy())
-      p = img2png(y.numpy(),colors=plt.cm.magma)
-      w = img2png(w.numpy())
-      t = img2png((yt > 0.9).numpy().astype(np.uint8))
+      r = img2png(x.cpu().numpy())
+      p = img2png(y.cpu().numpy(),colors=plt.cm.magma)
+      w = img2png(w.cpu().numpy())
+      t = img2png((yt > 0.9).cpu().numpy().astype(np.uint8))
       composite = np.round(r/3 + p/3 + w/3).astype(np.uint8).clip(min=0,max=255)
       m = np.any(t[:,:,:3]!=0 , axis=2)
       composite[m] = t[m]
@@ -591,7 +592,7 @@ def train(dataset=None,continue_training=False):
       save_png(savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
-  rate = 1 if str(device)!='cpu' else 0.0435 ## megapixels / sec 
+  rate = 1.4 if str(device)!='cpu' else 0.0435 ## megapixels / sec 
   N_epochs=300 ## MYPARAM
   print(f"Estimated Time: {n_pix} Mpix * 1s/Mpix = {300*n_pix/60/rate:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
@@ -634,7 +635,7 @@ def predict():
       gtpts = (np.array(gtpts) * D.zoom).astype(np.int)
 
     pred = np.zeros(raw.shape)
-    for p in splitIntoPatches(pred.shape, (512,512), (24,24)):
+    for p in splitIntoPatches(pred.shape, (256,256), (24,24)):
       x = torch.Tensor(raw[None,None][p.outer]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
