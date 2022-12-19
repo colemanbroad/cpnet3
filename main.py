@@ -5,12 +5,16 @@ from types import SimpleNamespace as SN
 import json
 import pickle
 import shutil
-from glob import glob
+from textwrap import dedent
+from itertools import product
 
 ## standard scipy
 import ipdb
 import matplotlib
 import numpy as np
+from numpy import array, exp, zeros, maximum, indices
+def ceil(x): return np.ceil(x).astype(int)
+def floor(x): return np.floor(x).astype(int)
 import torch
 
 from matplotlib                import pyplot as plt
@@ -23,14 +27,11 @@ from skimage.morphology.binary import binary_dilation
 from tifffile                  import imread
 
 ## 3rd party 
-import augmend
-from pykdtree.kdtree import KDTree as pyKDTree
-from textwrap import dedent
+# import augmend
 
 ## segtools
-from segtools.point_matcher import match_unambiguous_nearestNeib as snnMatch
-from segtools import torch_models
-from segtools.cpnet_utils import createTarget, splitIntoPatches
+import torch_models
+from match import snnMatch
 
 """
 RUN ME ON SLURM!!
@@ -49,12 +50,8 @@ def load_pkl(name):
 def save_pkl(name, stuff):
   with open(name,'wb') as file:
     pickle.dump(stuff, file)
-def save_json(name, stuff):
-  with open(name,'w') as file:
-    json.dump(stuff, file)
 def save_png(name, img):
-    imsave(name, img)
-
+  imsave(name, img)
 
 def plotHistory():
 
@@ -75,7 +72,6 @@ def plotHistory():
   ax[2+1].plot(valis[:,2], label="height")
   ax[2+1].legend()
 
-
 def wipedir(path):
   path = Path(path)
   if path.exists(): shutil.rmtree(path)
@@ -85,6 +81,106 @@ def wipedir(path):
 """
 UTILITIES
 """
+
+def createTarget(pts, target_shape, sigmas):
+  s  = np.array(sigmas)
+  ks = floor(7*s).astype(int)   ## extend support to 7/2 sigma in every direc
+  ks = ks - ks%2 + 1            ## enfore ODD shape so kernel is centered! 
+
+  pts = np.array(pts).astype(int)
+
+  ## create a single Gaussian kernel array
+  def f(x):
+    x = x - (ks-1)/2
+    return exp(-(x*x/s/s).sum()/2)
+  kern = array([f(x) for x in indices(ks).reshape((len(ks),-1)).T]).reshape(ks)
+  
+  target = zeros(ks + target_shape) ## include border padding
+  w = ks//2                         ## center coordinate of kernel
+  pts_offset = pts + w              ## offset by padding
+
+  for p in pts_offset:
+    target_slice = tuple(slice(a,b+1) for a,b in zip(p-w,p+w))
+    target[target_slice] = maximum(target[target_slice], kern)
+
+  remove_pad = tuple(slice(a,a+b) for a,b in zip(w,target_shape))
+  target = target[remove_pad]
+
+  return target
+
+def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24)):
+  """
+  Split image into non-overlapping `inner` rectangles that exactly cover
+  `img_shape`. Grow these rectangles by `border_shape` to produce overlapping
+  `outer` rectangles to provide context to all `inner` pixels. These borders
+  should be half the receptive field width of our CNN.
+
+  CONSTRAINTS
+  outer shape % 8 == 0 in XY (last two dims)
+  img_shape   >= outer_shape 
+  outer_shape >= 2*min_border_shape
+
+  GUARANTEES
+  outer shape == outer_shape forall patches
+  inner shape <= outer_shape - min_border_shape
+  acutal boder shape >= min_border_shape forall patches except on image bounds
+  max(inner shape) - min(inner shape) <= 1 forall shapes
+  
+  """
+  
+  img_shape = array(img_shape)
+  outer_shape = array(outer_shape)
+  min_border_shape = array(min_border_shape)
+  
+  # make shapes divisible by 8
+  assert all(outer_shape % 4 == 0), f"Error: `outer_shape` {outer_shape}%8 != 0."
+  assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit"
+  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide"
+
+  # our actual shape will be <= this desired shape. `outer_shape` is fixed,
+  # but the border shape will grow.
+  desired_inner_shape = outer_shape - min_border_shape
+
+  ## round up, shrinking the actual inner_shape
+  inner_counts = ceil(img_shape / desired_inner_shape)
+  inner_shape_float = img_shape / inner_counts
+
+  def f(i,n):
+    a = inner_shape_float[n]
+    b = floor(a*i)      # slice start
+    c = floor(a*(i+1))  # slice stop
+    inner = slice(b,c)
+    
+    w = c-b
+
+    # shift `outer` patch inwards when we hit a border to maintain outer_shape.
+    if b==0:                          # left border
+      outer = slice(0,outer_shape[n])
+      inner_rel = slice(0,w)
+    elif c==img_shape[n]:             # right border 
+      outer = slice(img_shape[n]-outer_shape[n],img_shape[n])
+      inner_rel = slice(outer_shape[n]-w,outer_shape[n])
+    else:
+      r = b - min_border_shape[n]
+      outer = slice(r,r+outer_shape[n])
+      inner_rel = slice(min_border_shape[n],min_border_shape[n]+w)
+    return SN(inner=inner, outer=outer, inner_rel=inner_rel)
+
+  ndim = len(inner_counts)
+  slices_lists = [[f(i,n) for i in range(inner_counts[n])] 
+                          for n in range(ndim)]
+
+  def g(s):
+    inner = tuple(x.inner for x in s)
+    outer = tuple(x.outer for x in s)
+    inner_rel = tuple(x.inner_rel for x in s)
+    return SN(inner=inner, outer=outer, inner_rel=inner_rel)
+
+  # equivalent to itertools.product(*slices_lists)
+  # prod = array(np.meshgrid(*slices_lists)).reshape((ndim,-1)).T
+
+  res = [g(s) for s in product(*slices_lists)]
+  return res
 
 def zoom_pts(pts,scale):
   """
@@ -171,7 +267,9 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
-"""Parameters for data(), train(), and predict()"""
+"""
+Parameters for data(), train(), and predict()
+"""
 def params():
   D = SN()
 
@@ -193,7 +291,7 @@ def params():
   D.border = [0,0]
   D.match_dub = 10
   D.match_scale = [1,1]
-  D.ndim = 2
+  # D.ndim = 2
 
   ## predict
   D.mode = 'NoGT' ## 'withGT'
@@ -303,27 +401,33 @@ def train(dataset=None,continue_training=False):
   assert len(dataset)>8
   assert len(labels)==len(dataset)
 
-  ## augmentation by flips and rotations
-  def build_augmend(ndim):
-    ag = augmend
-    aug = ag.Augmend()
-    aug.add([ag.FlipRot90(axis=0), ag.FlipRot90(axis=0), ag.FlipRot90(axis=0),], probability=1)
-    aug.add([ag.FlipRot90(axis=(1,2)), ag.FlipRot90(axis=(1,2)), ag.FlipRot90(axis=(1,2))], probability=1)
-    # aug.add([IntensityScaleShift(), Identity(), Identity()], probability=0.5)
-    # aug.add([AdditiveNoise(), Identity(), Identity()], probability=0.5)
-    # ## continuous rotations that introduce black regions
-    # ## this will make our weights non-binary, but that's OK.
-    # aug.add([Rotate(axis=(1,2), order=1), Rotate(axis=(1,2), order=1), Rotate(axis=(1,2), order=1)], probability=1)
-    # aug.add([Elastic(axis=(1,2), order=1), Elastic(axis=(1,2), order=1), Elastic(axis=(1,2), order=1)], probability=1)
-    return aug
-  f_aug = build_augmend(D.ndim)
-
   ## add loss weights to each patch
   for s in dataset:
-    s.weights = np.ones(s.target.shape)
+    s.weights = np.zeros(s.target.shape)
+    s.weights[s.inner_rel] = 1
+
     # s.weights = binary_dilation(s.target>0 , np.ones((1,7,7)))
     # s.weights = (s.target > 0)
     # print("{:.3f}".format(s.weights.mean()),end="  ")
+
+  ## augmentation by flips and rotations
+  def augmentSample(sample):
+    s = sample
+    
+    # rotate -90 + flip x
+    if np.random.rand() < 0.5:
+      for x in [s.raw, s.target, s.weights]:
+        x = x.transpose([0,1])
+    
+    # flip y
+    if np.random.rand() < 0.5:
+      for x in [s.raw, s.target, s.weights]:
+        x = x[::-1]
+    
+    # flip x
+    if np.random.rand() < 0.5:
+      for x in [s.raw, s.target, s.weights]:
+        x = x[:, ::-1]
 
   # if D.sparse:
   #   # w0 = dgen.weights__decaying_bg_multiplier(s.target,0,thresh=np.exp(-0.5*(3)**2),decayTime=None,bg_weight_multiplier=0.0)
@@ -374,8 +478,7 @@ def train(dataset=None,continue_training=False):
       for arr in [x,yt,w]: arr = arr[ss] # does this work?
 
     ## augmentation
-    if augment:
-      x,yt,w = f_aug([x,yt,w])
+    if augment: augmentSample(s)
 
     # ## glance at patches after augmentation
     # r = img2png(x)
@@ -430,8 +533,9 @@ def train(dataset=None,continue_training=False):
     if mode=='glance':
       r = img2png(x.numpy())
       p = img2png(y.numpy(),colors=plt.cm.magma)
+      w = img2png(w.numpy())
       t = img2png((yt > 0.9).numpy().astype(np.uint8))
-      composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
+      composite = np.round(r/3 + p/3 + w/3).astype(np.uint8).clip(min=0,max=255)
       m = np.any(t[:,:,:3]!=0 , axis=2)
       composite[m] = t[m]
       return composite
@@ -443,7 +547,7 @@ def train(dataset=None,continue_training=False):
     tic = time()
     for i in range(N_train):
       s  = traindata[idxs[i]]
-      y,loss = mse_loss(s, augment=False, mode='train')
+      y,loss = mse_loss(s, augment=True, mode='train')
       _losses.append(loss)
       dt = time()-tic; tic = time()
       print(f"it {i}/{N_train}, dt {dt:5f}, max {y.max():5f}", end='\r',flush=True)
@@ -477,7 +581,7 @@ def train(dataset=None,continue_training=False):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       s = traindata[i]
-      composite = mse_loss(s, augment=False, mode='glance')
+      composite = mse_loss(s, augment=True, mode='glance')
       save_png(savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
