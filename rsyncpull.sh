@@ -7,7 +7,7 @@ cd ~/Desktop/mpi-remote/project-broaddus/
 # ext="rawdata/isbi_challenge_out_extra/trackingvideo/"
 # ext="rawdata/isbi_challenge_out_extra/Fluo-N3DL-TRIF/"
 
-ext="cpnet3/data/Fluo-N2DH-GOWT1/"
+ext="cpnet3/main/Fluo-N3DH-CHO/"
 
 # open $ext
 # exit
