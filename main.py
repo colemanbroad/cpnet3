@@ -30,7 +30,8 @@ from tifffile                  import imread
 # import augmend
 
 ## segtools
-import torch_models
+from torch_models import Unet3
+from torch_models import nn
 from match import snnMatch
 
 """
@@ -41,7 +42,7 @@ sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slur
 # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
 # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
 # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
-savedir = Path("data/Fluo-N2DH-GOWT1/")
+savedir = Path("main/Fluo-N3DH-CHO/")
 
 def load_tif(name): return imread(name) 
 def load_pkl(name): 
@@ -55,6 +56,7 @@ def save_png(name, img):
 
 def plotHistory():
 
+  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/data/Fluo-N2DH-GOWT1/train/history.pkl")
   history = load_pkl(savedir/"train/history.pkl")
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
@@ -108,7 +110,7 @@ def createTarget(pts, target_shape, sigmas):
 
   return target
 
-def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24)):
+def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24), divisor=(8,8)):
   """
   Split image into non-overlapping `inner` rectangles that exactly cover
   `img_shape`. Grow these rectangles by `border_shape` to produce overlapping
@@ -131,9 +133,10 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24))
   img_shape = array(img_shape)
   outer_shape = array(outer_shape)
   min_border_shape = array(min_border_shape)
+  divisor = array(divisor)
   
   # make shapes divisible by 8
-  assert all(outer_shape % 4 == 0), f"Error: `outer_shape` {outer_shape}%8 != 0."
+  assert all(outer_shape % divisor == 0), f"Error: `outer_shape` {outer_shape}%8 != 0."
   assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit"
   assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide"
 
@@ -273,37 +276,55 @@ Parameters for data(), train(), and predict()
 def params():
   D = SN()
 
+  D.ndim = 3
   ## data, predict
-  base = "/lustre/projects/project-broaddus/rawdata/GOWT1/Fluo-N2DH-GOWT1/"
+  base = "Fluo-N3DH-CHO/"
   D.name_raw = base + "01/t{time:03d}.tif"
   D.name_pts = base + "01_GT/TRA/man_track{time:03d}.tif"
-  D.zoom = (0.25,0.25)
-
-  ## train, predict
-  D.nms_footprint = [5,5]
-
   ## data
-  D.outer_shape_train = (128,128)
-  D.min_border_shape_train = (16,16)
-  D.sigma = (5,5)
   D.traintimes = range(0,91,5)
-
-  ## train
-  D.border = [0,0]
-  D.match_dub = 10
-  D.match_scale = [1,1]
-  # D.ndim = 2
-
   ## predict
   D.mode = 'NoGT' ## 'withGT'
   D.predtimes = range(3,91,5)
 
+  if D.ndim==2:
+    ## data, predict
+    D.zoom = (0.25, 0.25)
+    ## train, predict
+    D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
+    D.snnMatch = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1])
+    D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
+    ## data
+    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
+    D.sigma = (5,5)
+    ## train
+    D.border = [0,0]
+
+  if D.ndim==3:
+    ## data, predict
+    D.zoom = (1, 0.25, 0.25)
+    ## train, predict
+    D.snnMatch = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1,1])
+    D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
+    D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
+    ## data
+    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(16,128,128), min_border_shape=(4,16,16), divisor=(1,8,8))
+    D.sigma = (3,5,5)
+    ## train
+    D.border = [0,0,0]
+
+  if "Fluo-N3DH-CHO" in D.name_raw: # shape = (5,111,128)
+    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
+
+  D.splitIntoPatchesPred = D.splitIntoPatches
+
   ## ------------------------------------------------
 
-  ## data-01/
+  ## main-01/
   # D.outer_shape_train = (128,128)
   # D.min_border_shape_train = (16,16)
 
+  ## main-02/
   # D.outer_shape_train = (64,64)
   # D.min_border_shape_train = (0,0)
 
@@ -327,7 +348,7 @@ def data_v03():
     pts = zoom_pts(pts, D.zoom)
     raw = norm_percentile01(raw,2,99.4)
     target = createTarget(pts, raw.shape, D.sigma)
-    patches = splitIntoPatches(raw.shape, outer_shape=D.outer_shape_train, min_border_shape=D.min_border_shape_train)
+    patches = D.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
     samples = [SN(raw=r, target=t, inner=p.inner, outer=p.outer, inner_rel=p.inner_rel, time=i) 
@@ -339,7 +360,7 @@ def data_v03():
   data = [f(i) for i in D.traintimes]
   data = [s for dat in data for s in dat]
 
-  save_pkl("dataset.pkl", data)
+  save_pkl(savedir/"data/dataset.pkl", data)
 
   ## save train/vali/test data
   wipedir(savedir/"data/png/")
@@ -371,15 +392,10 @@ def train(dataset=None,continue_training=False):
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  net = torch_models.Unet3(16, [[1],[1]], pool=(2,2),   kernsize=(5,5),   finallayer=torch_models.nn.Sequential)
+  net = D.buildUNet()
   net = net.to(device)
   torch_models.init_weights(net)
   opt = torch.optim.Adam(net.parameters(), lr = 1e-4)
-
-  # ipdb.set_trace()
-
-  # if str(device)=='cpu':
-  #   dataset = dataset[::23]
 
   ## load weights and sample train/vali assignment from disk?
   if CONTINUE:
@@ -418,17 +434,23 @@ def train(dataset=None,continue_training=False):
     # rotate -90 + flip x
     if np.random.rand() < 0.5:
       for x in [s.raw, s.target, s.weights]:
-        x = x.transpose([0,1])
+        x = x.transpose([1,0]) if D.ndim==2 else x.transpose([0,2,1])
     
-    # flip y
+    # flip y[z]
     if np.random.rand() < 0.5:
       for x in [s.raw, s.target, s.weights]:
         x = x[::-1]
     
-    # flip x
+    # flip x[y]
     if np.random.rand() < 0.5:
       for x in [s.raw, s.target, s.weights]:
         x = x[:, ::-1]
+
+    # flip z
+    if np.random.rand() < 0.5 and D.ndim==3:
+      for x in [s.raw, s.target, s.weights]:
+        x = x[:, :, ::-1]
+
 
   # if D.sparse:
   #   # w0 = dgen.weights__decaying_bg_multiplier(s.target,0,thresh=np.exp(-0.5*(3)**2),decayTime=None,bg_weight_multiplier=0.0)
@@ -519,15 +541,15 @@ def train(dataset=None,continue_training=False):
     if mode=='vali':
       y = y.cpu().numpy()
       loss = float(loss.detach().cpu())
-      pts    = peak_local_max(y, threshold_abs=.5, exclude_border=False, footprint=np.ones(D.nms_footprint))
-      gt_pts = peak_local_max(yt.detach().cpu().numpy().astype(np.float32), threshold_abs=.5, exclude_border=False, footprint=np.ones(D.nms_footprint))
+      pts = D.findPeaks(y)
+      gt_pts = D.findPeaks(yt.detach().cpu().numpy().astype(np.float32))
       
       ## filter border points
       patch_shape   = np.array(x.shape)
       pts2    = [p for p in pts if np.all(p%(patch_shape-D.border) > D.border)]
       gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-D.border) > D.border)]
 
-      matching = snnMatch(gt_pts2, pts2, dub=D.match_dub, scale=D.match_scale)
+      matching = D.snnMatch(gt_pts2, pts2)
       scores = SN(loss=loss, f1=matching.f1, height=y.max())
       return y, scores
 
@@ -559,9 +581,8 @@ def train(dataset=None,continue_training=False):
     _valiscores = []
     idxs = np.arange(N_vali)
     np.random.shuffle(idxs)
-    # idxs = idxs[:len(idxs)//10]
     for i in idxs:
-      s = validata[i] ## no idxs
+      s = validata[i]
       y, scores = mse_loss(s,augment=False,mode='vali')
       _valiscores.append((scores.loss, scores.f1, scores.height))
       # if i%10==0: print(f"_scores",_scores, end='\n',flush=True)
@@ -581,18 +602,19 @@ def train(dataset=None,continue_training=False):
   def predGlances(time):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
-      s = traindata[i]
-      composite = mse_loss(s, augment=True, mode='glance')
+      composite = mse_loss(traindata[i], augment=True, mode='glance')
       save_png(savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
-      s = validata[i]
-      composite = mse_loss(s, augment=False, mode='glance')
+      composite = mse_loss(validata[i], augment=False, mode='glance')
       save_png(savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
-  rate = 1.4 if str(device)!='cpu' else 0.0435 ## megapixels / sec 
+  if D.ndim==2:
+    rate = 1.4 if str(device)!='cpu' else 0.0435 ## megapixels / sec 
+  elif D.ndim==3:
+    rate = 1.0 if str(device)!='cpu' else 0.0310 ## megapixels / sec 
   N_epochs=300 ## MYPARAM
   print(f"Estimated Time: {n_pix} Mpix * 1s/Mpix = {300*n_pix/60/rate:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
@@ -617,11 +639,11 @@ def predict():
 
   wipedir(savedir / "predict")
 
-  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  net = torch_models.Unet3(16, [[1],[1]], pool=(2,2),   kernsize=(5,5),   finallayer=torch_models.nn.Sequential)
-  net = net.to(device)
-
   D = params()
+
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  net = D.buildUNet()
+  net = net.to(device)
 
   def predsingle(time):
     raw = load_tif(D.name_raw.format(time=i)) #.transpose([1,0,2,3])[1]
@@ -634,19 +656,25 @@ def predict():
       gtpts = [p for i,p in enumerate(gtpts) if classes[i] in ['p','pm']]
       gtpts = (np.array(gtpts) * D.zoom).astype(np.int)
 
+    ## seamless prediction tiling
     pred = np.zeros(raw.shape)
-    for p in splitIntoPatches(pred.shape, (256,256), (24,24)):
-      x = torch.Tensor(raw[None,None][p.outer]).to(device)
+    for p in D.splitIntoPatchesPred(pred.shape):
+      x = torch.Tensor(raw[p.outer][None,None]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
 
-    height = pred.max()
-    
-    pts = peak_local_max(pred,threshold_abs=.2,exclude_border=False,footprint=np.ones(D.nms_footprint))
+    ## find and scale peaks back to orig space
+    height = pred.max()    
+    pts = D.findPeaks(pred)
     pts = zoom_pts(pts , 1 / np.array(D.zoom))
+
+    # ## filter border points
+    # pred_shape   = np.array(pred.shape)
+    # pts2    = [p for p in pts if np.all(p%(pred_shape-D.border) > D.border)]
+    # gt_pts2 = [p for p in gt_pts if np.all(p%(pred_shape-D.border) > D.border)]
     
     if D.mode=='withGT':
-      matching = snnMatch(gtpts,pts,dub=100,scale=[3,1,1])
+      matching = D.snnMatch(gtpts,pts)
       print(dedent(f"""
           weights : {weights}
              time : {time:03d}
