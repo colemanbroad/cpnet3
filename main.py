@@ -30,8 +30,7 @@ from tifffile                  import imread
 # import augmend
 
 ## segtools
-from torch_models import Unet3
-from torch_models import nn
+from torch_models import Unet3, init_weights, nn
 from match import snnMatch
 
 """
@@ -278,7 +277,8 @@ def params():
 
   D.ndim = 3
   ## data, predict
-  base = "Fluo-N3DH-CHO/"
+  base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
+  # base = "Fluo-N3DH-CHO/"
   D.name_raw = base + "01/t{time:03d}.tif"
   D.name_pts = base + "01_GT/TRA/man_track{time:03d}.tif"
   ## data
@@ -360,6 +360,7 @@ def data_v03():
   data = [f(i) for i in D.traintimes]
   data = [s for dat in data for s in dat]
 
+  wipedir(savedir/"data/")
   save_pkl(savedir/"data/dataset.pkl", data)
 
   ## save train/vali/test data
@@ -394,7 +395,7 @@ def train(dataset=None,continue_training=False):
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   net = D.buildUNet()
   net = net.to(device)
-  torch_models.init_weights(net)
+  init_weights(net)
   opt = torch.optim.Adam(net.parameters(), lr = 1e-4)
 
   ## load weights and sample train/vali assignment from disk?
