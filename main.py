@@ -26,6 +26,8 @@ from skimage.measure           import regionprops
 from skimage.morphology.binary import binary_dilation
 from tifffile                  import imread
 
+import isbidata
+
 ## 3rd party 
 # import augmend
 
@@ -37,11 +39,6 @@ from match import snnMatch
 RUN ME ON SLURM!!
 sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/e23-mau.out -e slurm_err/e23-mau.out --wrap '/bin/time -v python e23_mauricio2.py'
 """
-
-# savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
-# savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
-# savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
-savedir = Path("main/Fluo-N3DH-CHO/")
 
 def load_tif(name): return imread(name) 
 def load_pkl(name): 
@@ -55,7 +52,7 @@ def save_png(name, img):
 
 def plotHistory():
 
-  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/data/Fluo-N2DH-GOWT1/train/history.pkl")
+  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/main/Fluo-N3DH-CHO/train/history.pkl")
   history = load_pkl(savedir/"train/history.pkl")
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
@@ -269,30 +266,56 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
+
+
 """
 Parameters for data(), train(), and predict()
 """
+
+# savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
+# savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
+# savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
+
+isbiname = "Fluo-C2DL-Huh7"
+savedir = Path(f"main/{isbiname}/")
+
 def params():
   D = SN()
 
-  D.ndim = 3
+  D.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
-  base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
-  # base = "Fluo-N3DH-CHO/"
-  D.name_raw = base + "01/t{time:03d}.tif"
-  D.name_pts = base + "01_GT/TRA/man_track{time:03d}.tif"
+  # base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
+  
+  base = f"{isbiname}/"
+  tb = isbidata.isbi_times[isbiname]
+  D.name_raw = base + "{dset}/t{time:03d}.tif"
+  D.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+  
   ## data
-  D.traintimes = range(0,91,5)
+  # D.traintimes = [dict(dset=d, time=t) for t in range(0,91,17) for d in ["01","02"]]
+  ## predict
+  # D.predtimes =  [dict(dset=d, time=t) for t in range(3,91,17) for d in ["01","02"]]
+
+  alldata = np.array([dict(dset=d, time=t) 
+                        for d in ['01','02']
+                        for t in range(tb[d][0], tb[d][1])])
+
+  np.random.seed(42)
+  np.random.shuffle(alldata)
+  alldata = alldata[:16]
+  N = len(alldata)
+  D.traintimes = alldata[:N*7//8]
+  D.predtimes = alldata[N*7//8:]
+  
   ## predict
   D.mode = 'NoGT' ## 'withGT'
-  D.predtimes = range(3,91,5)
 
   if D.ndim==2:
     ## data, predict
     D.zoom = (0.25, 0.25)
     ## train, predict
     D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
-    D.snnMatch = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1])
+    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1])
     D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
     ## data
     D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
@@ -304,7 +327,7 @@ def params():
     ## data, predict
     D.zoom = (1, 0.25, 0.25)
     ## train, predict
-    D.snnMatch = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1,1])
+    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1,1])
     D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
     ## data
@@ -339,9 +362,9 @@ def data_v03():
 
   D = params()
 
-  def f(i):
-    raw = load_tif(D.name_raw.format(time=i)) #.transpose([1,0,2,3])
-    lab = load_tif(D.name_pts.format(time=i)) #.transpose([])
+  def f(dikt):
+    raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])
+    lab = load_tif(D.name_pts.format(**dikt)) #.transpose([])
     pts = np.array([x['centroid'] for x in regionprops(lab)])
     raw = zoom(raw, D.zoom, order=1)
     # lab = zoom(lab, D.zoom, order=1)
@@ -351,13 +374,13 @@ def data_v03():
     patches = D.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
-    samples = [SN(raw=r, target=t, inner=p.inner, outer=p.outer, inner_rel=p.inner_rel, time=i) 
+    samples = [SN(raw=r, target=t, inner=p.inner, outer=p.outer, inner_rel=p.inner_rel, **dikt) 
                   for r,t,p in zip(raw_patches,target_patches,patches)]
     return samples
 
   # return pickle.load(open(str(savedir / 'data/filtered.pkl'), 'rb'))
 
-  data = [f(i) for i in D.traintimes]
+  data = [f(dikt) for dikt in D.traintimes]
   data = [s for dat in data for s in dat]
 
   wipedir(savedir/"data/")
@@ -382,7 +405,7 @@ def train(dataset=None,continue_training=False):
   print("CONTINUE ? : ", bool(CONTINUE))
 
   print(f"""
-    Begin training CP-Net on Fluo-C2DL-Huh7/01
+    Begin training CP-Net on {isbiname}
     Savedir is {savedir / "train"}
     """)
 
@@ -617,7 +640,7 @@ def train(dataset=None,continue_training=False):
   elif D.ndim==3:
     rate = 1.0 if str(device)!='cpu' else 0.0310 ## megapixels / sec 
   N_epochs=300 ## MYPARAM
-  print(f"Estimated Time: {n_pix} Mpix * 1s/Mpix = {300*n_pix/60/rate:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
+  print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
 
   for ep in range(N_epochs):
@@ -646,13 +669,13 @@ def predict():
   net = D.buildUNet()
   net = net.to(device)
 
-  def predsingle(time):
-    raw = load_tif(D.name_raw.format(time=i)) #.transpose([1,0,2,3])[1]
+  def predsingle(dikt):
+    raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
     raw = zoom(raw, D.zoom,order=1)
     raw = norm_percentile01(raw,2,99.4)
 
     if D.mode=='withGT':
-      lab = load_tif(D.name_pts.format(time=i)) #.transpose([])
+      lab = load_tif(D.name_pts.format(**dikt)) #.transpose([])
       pts = np.array([x['centroid'] for x in regionprops(lab)])
       gtpts = [p for i,p in enumerate(gtpts) if classes[i] in ['p','pm']]
       gtpts = (np.array(gtpts) * D.zoom).astype(np.int)
@@ -700,11 +723,11 @@ def predict():
   for weights in ['f1']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(savedir / f'train/m/best_weights_{weights}.pt'))
 
-    for i in D.predtimes:
-      d = predsingle(i)
-      save_png(savedir/f"predict/t{i:04d}-{weights}.png", d.composite)
+    for dikt in D.predtimes:
+      d = predsingle(dikt)
+      save_png(savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
 if __name__=="__main__":
   dataset = data_v03()
-  train(dataset,continue_training=1)
+  train(dataset,continue_training=0)
   predict()
