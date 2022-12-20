@@ -291,8 +291,8 @@ def params(
   D.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
   
-  # base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
-  base = f"{isbiname}/"
+  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  # base = f"{isbiname}/"
   tb = isbi_times[isbiname]
   D.name_raw = base + "{dset}/t{time:03d}.tif"
   D.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
@@ -324,6 +324,7 @@ def params(
     D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1])
     D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
     ## data
+    # print("shape is : ", )
     D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
     D.sigma = (5,5)
     ## train
@@ -377,6 +378,7 @@ def data(D):
     pts = zoom_pts(pts, D.zoom)
     raw = norm_percentile01(raw,2,99.4)
     target = createTarget(pts, raw.shape, D.sigma)
+    print("rawshape: ", raw.shape)
     patches = D.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
