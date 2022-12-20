@@ -26,7 +26,7 @@ from skimage.measure           import regionprops
 from skimage.morphology.binary import binary_dilation
 from tifffile                  import imread
 
-import isbidata
+from isbidata import isbi_times, isbi_scales
 
 ## 3rd party 
 # import augmend
@@ -52,8 +52,10 @@ def save_png(name, img):
 
 def plotHistory():
 
+  D = params()
+
   # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/main/Fluo-N3DH-CHO/train/history.pkl")
-  history = load_pkl(savedir/"train/history.pkl")
+  history = load_pkl(D.savedir/"train/history.pkl")
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
   ax[0].plot(np.log(history.lossmeans), label="log train loss")
@@ -272,22 +274,26 @@ def norm_percentile01(x,p0,p1):
 Parameters for data(), train(), and predict()
 """
 
-# savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
-# savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
-# savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
-
-isbiname = "Fluo-C2DL-Huh7"
-savedir = Path(f"main/{isbiname}/")
-
-def params():
+def params(
+  isbiname = "Fluo-C2DL-Huh7"
+  ):
   D = SN()
+
+  savedir = Path(f"main/{isbiname}/")
+
+  # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
+  # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
+  # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
+
+  D.isbiname = isbiname
+  D.savedir = savedir
 
   D.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
-  # base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
   
+  # base = "/projects/project-broaddus/rawdata/isbi_train/Fluo-N3DH-CHO/"
   base = f"{isbiname}/"
-  tb = isbidata.isbi_times[isbiname]
+  tb = isbi_times[isbiname]
   D.name_raw = base + "{dset}/t{time:03d}.tif"
   D.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
   
@@ -327,7 +333,9 @@ def params():
     ## data, predict
     D.zoom = (1, 0.25, 0.25)
     ## train, predict
-    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1,1])
+    aniso = np.array(isbi_scales[isbiname])
+    aniso = aniso / aniso[2] # 
+    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=aniso)
     D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
     ## data
@@ -358,9 +366,7 @@ def params():
 Tiling patches with overlapping borders. Requires loss masking.
 Const outer size % 8 = 0.
 """
-def data_v03():
-
-  D = params()
+def data(D):
 
   def f(dikt):
     raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])
@@ -378,41 +384,38 @@ def data_v03():
                   for r,t,p in zip(raw_patches,target_patches,patches)]
     return samples
 
-  # return pickle.load(open(str(savedir / 'data/filtered.pkl'), 'rb'))
+  # return pickle.load(open(str(D.savedir / 'data/filtered.pkl'), 'rb'))
 
   data = [f(dikt) for dikt in D.traintimes]
   data = [s for dat in data for s in dat]
 
-  wipedir(savedir/"data/")
-  save_pkl(savedir/"data/dataset.pkl", data)
+  wipedir(D.savedir/"data/")
+  save_pkl(D.savedir/"data/dataset.pkl", data)
 
   ## save train/vali/test data
-  wipedir(savedir/"data/png/")
+  wipedir(D.savedir/"data/png/")
   for i,s in enumerate(data[::10]):
     r = img2png(s.raw)
     t = img2png(s.target, colors=plt.cm.magma)
     composite = r//2 + t//2 
-    imsave(savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
+    imsave(D.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
 
 """
 NOTE: train() includes additional data filtering.
 """
-def train(dataset=None,continue_training=False):
+def train(D, dataset=None,continue_training=False):
 
   CONTINUE = continue_training
   print("CONTINUE ? : ", bool(CONTINUE))
 
   print(f"""
-    Begin training CP-Net on {isbiname}
-    Savedir is {savedir / "train"}
+    Begin training CP-Net on {D.isbiname}
+    Savedir is {D.savedir / "train"}
     """)
 
   dataset = np.array(dataset)
-
-  ## NOTE these params only required for validation!
-  D = params()
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -423,20 +426,20 @@ def train(dataset=None,continue_training=False):
 
   ## load weights and sample train/vali assignment from disk?
   if CONTINUE:
-    labels = load_pkl(savedir / "train/labels.pkl")
-    net.load_state_dict(torch.load(savedir / f'train/m/best_weights_latest.pt'))
-    history = load_pkl(savedir / 'train/history.pkl')
+    labels = load_pkl(D.savedir / "train/labels.pkl")
+    net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_latest.pt'))
+    history = load_pkl(D.savedir / 'train/history.pkl')
   else:
-    wipedir(savedir/'train/m')
-    wipedir(savedir/"train/glance_output_train/")
-    wipedir(savedir/"train/glance_output_vali/")
+    wipedir(D.savedir/'train/m')
+    wipedir(D.savedir/"train/glance_output_train/")
+    wipedir(D.savedir/"train/glance_output_vali/")
     N = len(dataset)
     # a, b = (N*5)//8, (N*7)//8  ## MYPARAM train / vali / test 
     a = (N*7)//8 ## don't use test patches. test on full images.
     labels = np.zeros(N,dtype=np.uint8)
     labels[a:]=1; ## labels[b:]=2 ## 0=train 1=vali 2=test
     np.random.shuffle(labels)
-    save_pkl(savedir / "train/labels.pkl", labels)
+    save_pkl(D.savedir / "train/labels.pkl", labels)
     history = SN(lossmeans=[], valimeans=[])
 
   assert len(dataset)>8
@@ -534,7 +537,7 @@ def train(dataset=None,continue_training=False):
     # composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
     # # m = np.any(t[:,:,:3]!=0 , axis=2)
     # # composite[m] = t[m]
-    # save(composite,savedir/f'train/glance_augmented/a{s.time:03d}_{i:03d}.png')
+    # save(composite,D.savedir/f'train/glance_augmented/a{s.time:03d}_{i:03d}.png')
 
     x  = torch.from_numpy(x.copy() ).float().to(device, non_blocking=True)
     yt = torch.from_numpy(yt.copy()).float().to(device, non_blocking=True)
@@ -613,7 +616,7 @@ def train(dataset=None,continue_training=False):
 
     history.valimeans.append(np.nanmean(_valiscores,axis=0))
 
-    torch.save(net.state_dict(), savedir / f'train/m/best_weights_latest.pt')
+    torch.save(net.state_dict(), D.savedir / f'train/m/best_weights_latest.pt')
 
     valikeys   = ['loss','f1','height']
     valiinvert = [1,-1,-1] # minimize, maximize, maximize
@@ -621,18 +624,18 @@ def train(dataset=None,continue_training=False):
 
     for i,k in enumerate(valikeys):
       if np.nanmin(valis[:,i])==valis[-1,i]:
-        torch.save(net.state_dict(), savedir / f'train/m/best_weights_{k}.pt')
+        torch.save(net.state_dict(), D.savedir / f'train/m/best_weights_{k}.pt')
 
   def predGlances(time):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       composite = mse_loss(traindata[i], augment=True, mode='glance')
-      save_png(savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
+      save_png(D.savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
       composite = mse_loss(validata[i], augment=False, mode='glance')
-      save_png(savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
+      save_png(D.savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
   if D.ndim==2:
@@ -647,23 +650,20 @@ def train(dataset=None,continue_training=False):
     tic = time()
     trainOneEpoch()
     validateOneEpoch()
-    save_pkl(savedir / "train/history.pkl", history)
+    save_pkl(D.savedir / "train/history.pkl", history)
     if ep in range(10) or ep%10==0: predGlances(ep)
     dt  = time() - tic
 
     print("\033[F",end='') ## move cursor UP one line 
     print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={n_pix/dt:5f} Mpix/s", end='\n',flush=True)
 
-
 """
 Make predictions for each saved weight set : 'latest','loss','f1','height'
 Include avg/min across predictions too! Simple model ensembling.
 """
-def predict():
+def predict(D):
 
-  wipedir(savedir / "predict")
-
-  D = params()
+  wipedir(D.savedir / "predict")
 
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   net = D.buildUNet()
@@ -721,13 +721,26 @@ def predict():
     return SN(**locals())
 
   for weights in ['f1']: #['latest','loss','f1','height']:
-    net.load_state_dict(torch.load(savedir / f'train/m/best_weights_{weights}.pt'))
+    net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_{weights}.pt'))
 
     for dikt in D.predtimes:
       d = predsingle(dikt)
-      save_png(savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
+      save_png(D.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
+
+
+import sys
 
 if __name__=="__main__":
-  dataset = data_v03()
-  train(dataset,continue_training=0)
-  predict()
+  arg = sys.argv[1]
+  if arg:
+    D = params(arg)
+  else:
+    D = params()
+  dataset = data(D)
+  train(D, dataset, continue_training=0)
+  predict(D)
+
+
+"""
+sbatch -J cpnet -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/cpnet.out -e slurm_err/cpnet.out --wrap '/bin/time -v python main.py '
+"""
