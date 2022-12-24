@@ -7,6 +7,7 @@ import pickle
 import shutil
 from textwrap import dedent
 from itertools import product
+import sys
 
 ## standard scipy
 import ipdb
@@ -291,8 +292,8 @@ def params(
   D.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
   
-  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  # base = f"{isbiname}/"
+  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  base = f"{isbiname}/"
   tb = isbi_times[isbiname]
   D.name_raw = base + "{dset}/t{time:03d}.tif"
   D.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
@@ -311,7 +312,10 @@ def params(
   alldata = alldata[:16]
   N = len(alldata)
   D.traintimes = alldata[:N*7//8]
-  D.predtimes = alldata[N*7//8:]
+  # D.predtimes = alldata[N*7//8:]
+  D.predtimes = np.array([dict(dset=d, time=t) 
+                        for d in ['01']
+                        for t in range(tb[d][0], tb[d][0] + 4)])
   
   ## predict
   D.mode = 'NoGT' ## 'withGT'
@@ -673,6 +677,7 @@ def predict(D):
 
   def predsingle(dikt):
     raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
+    rawshape = raw.shape
     raw = zoom(raw, D.zoom,order=1)
     raw = norm_percentile01(raw,2,99.4)
 
@@ -722,15 +727,37 @@ def predict(D):
 
     return SN(**locals())
 
-  for weights in ['f1']: #['latest','loss','f1','height']:
+  ltps = []
+  rawshape = None
+  for weights in ['latest']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_{weights}.pt'))
 
     for dikt in D.predtimes:
       d = predsingle(dikt)
+      ltps.append(d.pts)
       save_png(D.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
+      rawshape = d.rawshape
+
+  import tracking
+  wipedir(D.savedir/"track")
+  track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
+
+  cmap = np.random.rand(256,3).clip(min=0.2)
+  cmap[0] = (0,0,0)
+  cmap = matplotlib.colors.ListedColormap(cmap)
+
+  # for time, lab in enumerate():
+  for i, dikt in enumerate(D.predtimes):
+    raw = img2png(load_tif(D.name_raw.format(**dikt)).astype(np.float32))
+    lab = img2png(track_labeled_images[i], colors=cmap)
+    save_png(D.savedir/"track/z{time:03d}.png".format(**dikt), track_labeled_images[i])
+    composite = np.round(raw/2 + lab/2).astype(np.uint8).clip(min=0,max=255)
+    save_png(D.savedir/"track/c{time:03d}.png".format(**dikt), composite)
+    save_png(D.savedir/"track/r{time:03d}.png".format(**dikt), raw)
+    save_png(D.savedir/"track/l{time:03d}.png".format(**dikt), lab)
 
 
-import sys
+
 
 if __name__=="__main__":
   arg = sys.argv[1]
@@ -742,7 +769,3 @@ if __name__=="__main__":
   train(D, dataset, continue_training=0)
   predict(D)
 
-
-"""
-sbatch -J cpnet -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/cpnet.out -e slurm_err/cpnet.out --wrap '/bin/time -v python main.py '
-"""
