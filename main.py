@@ -32,9 +32,10 @@ from isbidata import isbi_times, isbi_scales
 ## 3rd party 
 # import augmend
 
-## segtools
+## local
 from torch_models import Unet3, init_weights, nn
 from match import snnMatch
+import tracking
 
 """
 RUN ME ON SLURM!!
@@ -49,7 +50,9 @@ def save_pkl(name, stuff):
   with open(name,'wb') as file:
     pickle.dump(stuff, file)
 def save_png(name, img):
-  imsave(name, img)
+  imsave(name, img, check_contrast=False)
+def save_tif(name, img):
+  imsave(name, img, check_contrast=False)
 
 def plotHistory():
 
@@ -315,7 +318,7 @@ def params(
   # D.predtimes = alldata[N*7//8:]
   D.predtimes = np.array([dict(dset=d, time=t) 
                         for d in ['01']
-                        for t in range(tb[d][0], tb[d][0] + 4)])
+                        for t in range(tb[d][0], tb[d][1])])
   
   ## predict
   D.mode = 'NoGT' ## 'withGT'
@@ -677,9 +680,9 @@ def predict(D):
 
   def predsingle(dikt):
     raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    rawshape = raw.shape
     raw = zoom(raw, D.zoom,order=1)
     raw = norm_percentile01(raw,2,99.4)
+
 
     if D.mode=='withGT':
       lab = load_tif(D.name_pts.format(**dikt)) #.transpose([])
@@ -723,38 +726,51 @@ def predict(D):
       # m = np.any(t[:,:,:3]!=0 , axis=2)
       # composite[m] = t[m]
       return composite
-    composite = f()
+    # composite = f()
 
     return SN(**locals())
 
+  N_imgs = len(D.predtimes)
+
   ltps = []
-  rawshape = None
+  # rawpng_list = []
   for weights in ['latest']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_{weights}.pt'))
 
-    for dikt in D.predtimes:
+    for i, dikt in enumerate(D.predtimes):
+      print("\033[F",end='') ## move cursor UP one line 
+      print(f"Predicting on image {i+1}/{N_imgs}...", end='\n',flush=True)
+
       d = predsingle(dikt)
       ltps.append(d.pts)
-      save_png(D.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
-      rawshape = d.rawshape
+      # rawpng_list.append(d.rawpng)
+      # save_png(D.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
-  import tracking
-  wipedir(D.savedir/"track")
+
+  print(f"Run tracking...", end='\n',flush=True)
+  rawshape = load_tif(D.name_raw.format(**D.predtimes[0])).shape
   track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
 
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
   cmap = matplotlib.colors.ListedColormap(cmap)
 
+  wipedir(D.savedir/"track/png")
+  # wipedir(D.savedir/"track/tif")
   # for time, lab in enumerate():
   for i, dikt in enumerate(D.predtimes):
+
+    print("\033[F",end='') ## move cursor UP one line 
+    print(f"Saving image {i+1}/{N_imgs}...", end='\n',flush=True)
+
     raw = img2png(load_tif(D.name_raw.format(**dikt)).astype(np.float32))
-    lab = img2png(track_labeled_images[i], colors=cmap)
-    save_png(D.savedir/"track/z{time:03d}.png".format(**dikt), track_labeled_images[i])
-    composite = np.round(raw/2 + lab/2).astype(np.uint8).clip(min=0,max=255)
-    save_png(D.savedir/"track/c{time:03d}.png".format(**dikt), composite)
-    save_png(D.savedir/"track/r{time:03d}.png".format(**dikt), raw)
-    save_png(D.savedir/"track/l{time:03d}.png".format(**dikt), lab)
+    # raw = rawpng_list[i]
+    labpng = img2png(track_labeled_images[i], colors=cmap)
+    composite = np.round(raw/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
+    # save_tif(D.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
+    # save_png(D.savedir/"track/c{time:03d}.png".format(**dikt), composite)
+    # save_png(D.savedir/"track/r{time:03d}.png".format(**dikt), raw)
+    save_png(D.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
 
 
 
