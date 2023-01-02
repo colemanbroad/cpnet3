@@ -277,10 +277,7 @@ def norm_percentile01(x,p0,p1):
 """
 Parameters for data(), train(), and predict()
 """
-
-def params(
-  isbiname = "Fluo-C2DL-Huh7"
-  ):
+def params(isbiname = "Fluo-C2DL-Huh7"):
   D = SN()
 
   savedir = Path(f"main/{isbiname}/")
@@ -318,7 +315,7 @@ def params(
   # D.predtimes = alldata[N*7//8:]
   D.predtimes = np.array([dict(dset=d, time=t) 
                         for d in ['01']
-                        for t in range(tb[d][0], tb[d][1])])
+                        for t in range(tb[d][0], tb[d][0]+3)])
   
   ## predict
   D.mode = 'NoGT' ## 'withGT'
@@ -352,11 +349,14 @@ def params(
     ## train
     D.border = [0,0,0]
 
-  if "Fluo-N3DH-CHO" in D.name_raw: # shape = (5,111,128)
+  if isbiname=="Fluo-N3DH-CHO": # shape = (5,111,128)
     D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
 
-  D.splitIntoPatchesPred = D.splitIntoPatches
+  if isbiname=="PhC-C2DL-PSC":
+    D.zoom = (1,1)
+    D.sigma = (3,3)
 
+  D.splitIntoPatchesPred = D.splitIntoPatches
   ## ------------------------------------------------
 
   ## main-01/
@@ -648,7 +648,7 @@ def train(D, dataset=None,continue_training=False):
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
   if D.ndim==2:
-    rate = 1.4 if str(device)!='cpu' else 0.0435 ## megapixels / sec 
+    rate = 1.4 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec]
   elif D.ndim==3:
     rate = 1.0 if str(device)!='cpu' else 0.0310 ## megapixels / sec 
   N_epochs=300 ## MYPARAM
@@ -738,8 +738,8 @@ def predict(D):
     net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_{weights}.pt'))
 
     for i, dikt in enumerate(D.predtimes):
-      print("\033[F",end='') ## move cursor UP one line 
-      print(f"Predicting on image {i+1}/{N_imgs}...", end='\n',flush=True)
+      # print("\033[F",end='') ## move cursor UP one line 
+      print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
 
       d = predsingle(dikt)
       ltps.append(d.pts)
@@ -760,8 +760,8 @@ def predict(D):
   # for time, lab in enumerate():
   for i, dikt in enumerate(D.predtimes):
 
-    print("\033[F",end='') ## move cursor UP one line 
-    print(f"Saving image {i+1}/{N_imgs}...", end='\n',flush=True)
+    # print("\033[F",end='') ## move cursor UP one line 
+    print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
 
     raw = img2png(load_tif(D.name_raw.format(**dikt)).astype(np.float32))
     # raw = rawpng_list[i]

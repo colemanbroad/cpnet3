@@ -15,8 +15,8 @@ def trackAndLabel(list_of_pointclouds):
   labels = [np.zeros(xi.shape[0],np.uint32) for xi in x]
   labels[0] = np.arange(labels[0].shape[0]) + 1
   currentmax = np.max(labels[0])
-  f1,ax1 = plt.subplots()
-  f2,ax2 = plt.subplots()
+  # f1,ax1 = plt.subplots()
+  # f2,ax2 = plt.subplots()
 
   for i, xi in enumerate(x):
     for j, xij in enumerate(xi):
@@ -106,7 +106,6 @@ def minCostTrackWithDivisions(pts0,pts1):
 
   return edges
 
-
 def testMinCostTrackWithDivisions(N=10, D=1, b=2):
   # ltps = [rand(randint(50,70)) for _ in range(10)]
   # print(trackAndLabel(ltps))
@@ -118,6 +117,7 @@ def testMinCostTrackWithDivisions(N=10, D=1, b=2):
 
 def makeISBILabels(list_of_pointclouds, rawshape):
   assert len(rawshape) in (2,3)
+  rawshape = np.array(rawshape)
   list_of_edges, list_of_labels = trackAndLabel(list_of_pointclouds)
   mantrack_list = []
   s1,s2 = set(),set()
@@ -129,12 +129,12 @@ def makeISBILabels(list_of_pointclouds, rawshape):
     # print("s1 - s2", s1 - s2)
     # # plt.imshow(list_of_edges[i])
     # s1 = s2
-
     mantrack = np.zeros(rawshape, np.uint32)
     pts = list_of_pointclouds[i]
     for dx in np.arange(-6,6):
       for dy in np.arange(-6,6):
-        mantrack[tuple((pts + (dx,dy)).T)] = list_of_labels[i]
+        p = (pts + (dx,dy)).clip(min=(0,0), max=rawshape-(1,1))
+        mantrack[tuple(p.T)] = list_of_labels[i]
     mantrack_list.append(mantrack)
     # ipdb.set_trace()
   return mantrack_list
