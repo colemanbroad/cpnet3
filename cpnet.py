@@ -56,10 +56,10 @@ def save_tif(name, img):
 
 def plotHistory():
 
-  D = params()
+  PR = params()
 
-  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/main/Fluo-N3DH-CHO/train/history.pkl")
-  history = load_pkl(D.savedir/"train/history.pkl")
+  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/Fluo-N3DH-CHO/train/history.pkl")
+  history = load_pkl(PR.savedir/"train/history.pkl")
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
   ax[0].plot(np.log(history.lossmeans), label="log train loss")
@@ -225,9 +225,9 @@ def img2png(x,colors=None):
     return rgb
 
   _dtype = x.dtype
-  D = x.ndim
+  nd = x.ndim
 
-  if D==3:
+  if nd==3:
     a,b,c = x.shape
     yx = x.max(0)
     zx = x.max(1)
@@ -251,7 +251,7 @@ def img2png(x,colors=None):
   
   x = (x*255).astype(np.uint8)
 
-  if D==3:
+  if nd==3:
     x[b,:] = 255 # white line
     x[:,c] = 255 # white line
 
@@ -278,30 +278,30 @@ def norm_percentile01(x,p0,p1):
 Parameters for data(), train(), and predict()
 """
 def params(isbiname = "Fluo-C2DL-Huh7"):
-  D = SN()
+  PR = SN()
 
-  savedir = Path(f"main/{isbiname}/")
+  savedir = Path(f"cpnet-out/{isbiname}/")
 
   # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
   # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
   # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
 
-  D.isbiname = isbiname
-  D.savedir = savedir
+  PR.isbiname = isbiname
+  PR.savedir = savedir
 
-  D.ndim = 2 if "2D" in isbiname else 3
+  PR.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
   
   # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
   base = f"{isbiname}/"
   tb = isbi_times[isbiname]
-  D.name_raw = base + "{dset}/t{time:03d}.tif"
-  D.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+  PR.name_raw = base + "{dset}/t{time:03d}.tif"
+  PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
   
   ## data
-  # D.traintimes = [dict(dset=d, time=t) for t in range(0,91,17) for d in ["01","02"]]
+  # PR.traintimes = [dict(dset=d, time=t) for t in range(0,91,17) for d in ["01","02"]]
   ## predict
-  # D.predtimes =  [dict(dset=d, time=t) for t in range(3,91,17) for d in ["01","02"]]
+  # PR.predtimes =  [dict(dset=d, time=t) for t in range(3,91,17) for d in ["01","02"]]
 
   alldata = np.array([dict(dset=d, time=t) 
                         for d in ['01','02']
@@ -311,144 +311,143 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   np.random.shuffle(alldata)
   alldata = alldata[:16]
   N = len(alldata)
-  D.traintimes = alldata[:N*7//8]
-  # D.predtimes = alldata[N*7//8:]
-  D.predtimes = np.array([dict(dset=d, time=t) 
+  PR.traintimes = alldata[:N*7//8]
+  # PR.predtimes = alldata[N*7//8:]
+  PR.predtimes = np.array([dict(dset=d, time=t) 
                         for d in ['01']
                         for t in range(tb[d][0], tb[d][0]+3)])
   
   ## predict
-  D.mode = 'NoGT' ## 'withGT'
+  PR.mode = 'NoGT' ## 'withGT'
 
-  if D.ndim==2:
+  if PR.ndim==2:
     ## data, predict
-    D.zoom = (0.25, 0.25)
+    PR.zoom = (0.25, 0.25)
     ## train, predict
-    D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
-    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1])
-    D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
+    PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
+    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1]) ## y_true, y_predicted
+    PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
     ## data
-    # print("shape is : ", )
-    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
-    D.sigma = (5,5)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
+    PR.sigma = (5,5)
     ## train
-    D.border = [0,0]
+    PR.border = [0,0]
 
-  if D.ndim==3:
+  if PR.ndim==3:
     ## data, predict
-    D.zoom = (1, 0.25, 0.25)
+    PR.zoom = (1, 0.25, 0.25)
     ## train, predict
     aniso = np.array(isbi_scales[isbiname])
     aniso = aniso / aniso[2] # 
-    D.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=aniso)
-    D.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
-    D.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
+    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=aniso)
+    PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
+    PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
     ## data
-    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(16,128,128), min_border_shape=(4,16,16), divisor=(1,8,8))
-    D.sigma = (3,5,5)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(16,128,128), min_border_shape=(4,16,16), divisor=(1,8,8))
+    PR.sigma = (3,5,5)
     ## train
-    D.border = [0,0,0]
+    PR.border = [0,0,0]
 
   if isbiname=="Fluo-N3DH-CHO": # shape = (5,111,128)
-    D.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
 
   if isbiname=="PhC-C2DL-PSC":
-    D.zoom = (1,1)
-    D.sigma = (3,3)
+    PR.zoom = (1,1)
+    PR.sigma = (3,3)
 
-  D.splitIntoPatchesPred = D.splitIntoPatches
+  PR.splitIntoPatchesPred = PR.splitIntoPatches
   ## ------------------------------------------------
 
   ## main-01/
-  # D.outer_shape_train = (128,128)
-  # D.min_border_shape_train = (16,16)
+  # PR.outer_shape_train = (128,128)
+  # PR.min_border_shape_train = (16,16)
 
   ## main-02/
-  # D.outer_shape_train = (64,64)
-  # D.min_border_shape_train = (0,0)
+  # PR.outer_shape_train = (64,64)
+  # PR.min_border_shape_train = (0,0)
 
-  return D
+  return PR
 
 
 """
 Tiling patches with overlapping borders. Requires loss masking.
 Const outer size % 8 = 0.
 """
-def data(D):
+def data(PR):
 
   def f(dikt):
-    raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])
-    lab = load_tif(D.name_pts.format(**dikt)) #.transpose([])
+    raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])
+    lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
     pts = np.array([x['centroid'] for x in regionprops(lab)])
-    raw = zoom(raw, D.zoom, order=1)
-    # lab = zoom(lab, D.zoom, order=1)
-    pts = zoom_pts(pts, D.zoom)
+    raw = zoom(raw, PR.zoom, order=1)
+    # lab = zoom(lab, PR.zoom, order=1)
+    pts = zoom_pts(pts, PR.zoom)
     raw = norm_percentile01(raw,2,99.4)
-    target = createTarget(pts, raw.shape, D.sigma)
+    target = createTarget(pts, raw.shape, PR.sigma)
     print("rawshape: ", raw.shape)
-    patches = D.splitIntoPatches(raw.shape)
+    patches = PR.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
     samples = [SN(raw=r, target=t, inner=p.inner, outer=p.outer, inner_rel=p.inner_rel, **dikt) 
                   for r,t,p in zip(raw_patches,target_patches,patches)]
     return samples
 
-  # return pickle.load(open(str(D.savedir / 'data/filtered.pkl'), 'rb'))
+  # return pickle.load(open(str(PR.savedir / 'data/filtered.pkl'), 'rb'))
 
-  data = [f(dikt) for dikt in D.traintimes]
+  data = [f(dikt) for dikt in PR.traintimes]
   data = [s for dat in data for s in dat]
 
-  wipedir(D.savedir/"data/")
-  save_pkl(D.savedir/"data/dataset.pkl", data)
+  wipedir(PR.savedir/"data/")
+  save_pkl(PR.savedir/"data/dataset.pkl", data)
 
   ## save train/vali/test data
-  wipedir(D.savedir/"data/png/")
+  wipedir(PR.savedir/"data/png/")
   for i,s in enumerate(data[::10]):
     r = img2png(s.raw)
     t = img2png(s.target, colors=plt.cm.magma)
     composite = r//2 + t//2 
-    imsave(D.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
+    imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
 
 """
 NOTE: train() includes additional data filtering.
 """
-def train(D, dataset=None,continue_training=False):
+def train(PR, dataset=None,continue_training=False):
 
   CONTINUE = continue_training
   print("CONTINUE ? : ", bool(CONTINUE))
 
   print(f"""
-    Begin training CP-Net on {D.isbiname}
-    Savedir is {D.savedir / "train"}
+    Begin training CP-Net on {PR.isbiname}
+    Savedir is {PR.savedir / "train"}
     """)
 
   dataset = np.array(dataset)
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  net = D.buildUNet()
+  net = PR.buildUNet()
   net = net.to(device)
   init_weights(net)
   opt = torch.optim.Adam(net.parameters(), lr = 1e-4)
 
   ## load weights and sample train/vali assignment from disk?
   if CONTINUE:
-    labels = load_pkl(D.savedir / "train/labels.pkl")
-    net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_latest.pt'))
-    history = load_pkl(D.savedir / 'train/history.pkl')
+    labels = load_pkl(PR.savedir / "train/labels.pkl")
+    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_latest.pt'))
+    history = load_pkl(PR.savedir / 'train/history.pkl')
   else:
-    wipedir(D.savedir/'train/m')
-    wipedir(D.savedir/"train/glance_output_train/")
-    wipedir(D.savedir/"train/glance_output_vali/")
+    wipedir(PR.savedir/'train/m')
+    wipedir(PR.savedir/"train/glance_output_train/")
+    wipedir(PR.savedir/"train/glance_output_vali/")
     N = len(dataset)
     # a, b = (N*5)//8, (N*7)//8  ## MYPARAM train / vali / test 
     a = (N*7)//8 ## don't use test patches. test on full images.
     labels = np.zeros(N,dtype=np.uint8)
     labels[a:]=1; ## labels[b:]=2 ## 0=train 1=vali 2=test
     np.random.shuffle(labels)
-    save_pkl(D.savedir / "train/labels.pkl", labels)
+    save_pkl(PR.savedir / "train/labels.pkl", labels)
     history = SN(lossmeans=[], valimeans=[])
 
   assert len(dataset)>8
@@ -470,7 +469,7 @@ def train(D, dataset=None,continue_training=False):
     # rotate -90 + flip x
     if np.random.rand() < 0.5:
       for x in [s.raw, s.target, s.weights]:
-        x = x.transpose([1,0]) if D.ndim==2 else x.transpose([0,2,1])
+        x = x.transpose([1,0]) if PR.ndim==2 else x.transpose([0,2,1])
     
     # flip y[z]
     if np.random.rand() < 0.5:
@@ -483,12 +482,12 @@ def train(D, dataset=None,continue_training=False):
         x = x[:, ::-1]
 
     # flip z
-    if np.random.rand() < 0.5 and D.ndim==3:
+    if np.random.rand() < 0.5 and PR.ndim==3:
       for x in [s.raw, s.target, s.weights]:
         x = x[:, :, ::-1]
 
 
-  # if D.sparse:
+  # if PR.sparse:
   #   # w0 = dgen.weights__decaying_bg_multiplier(s.target,0,thresh=np.exp(-0.5*(3)**2),decayTime=None,bg_weight_multiplier=0.0)
   #   # NOTE: i think this is equivalent to a simple threshold mask @ 3xstddev, i.e.
   #   w0 = (s.target > np.exp(-0.5*(3**2))).astype(np.float32)
@@ -499,7 +498,7 @@ def train(D, dataset=None,continue_training=False):
 
   ## Filter dataset
   # traindata = df[(df.labels==0) & (df.npts>0)] ## MYPARAM subsample traindata ?
-  # tmax = np.array([s.tmax for s in D.samples])
+  # tmax = np.array([s.tmax for s in PR.samples])
   traindata = dataset[labels==0] # & (tmax > 0.99)]
   validata  = dataset[labels==1] # & (tmax > 0.99)]
   # if s.tmax < 0.99 and np.random.rand()<0.99: continue
@@ -546,7 +545,7 @@ def train(D, dataset=None,continue_training=False):
     # composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
     # # m = np.any(t[:,:,:3]!=0 , axis=2)
     # # composite[m] = t[m]
-    # save(composite,D.savedir/f'train/glance_augmented/a{s.time:03d}_{i:03d}.png')
+    # save(composite,PR.savedir/f'train/glance_augmented/a{s.time:03d}_{i:03d}.png')
 
     x  = torch.from_numpy(x.copy() ).float().to(device, non_blocking=True)
     yt = torch.from_numpy(yt.copy()).float().to(device, non_blocking=True)
@@ -577,15 +576,15 @@ def train(D, dataset=None,continue_training=False):
     if mode=='vali':
       y = y.cpu().numpy()
       loss = float(loss.detach().cpu())
-      pts = D.findPeaks(y)
-      gt_pts = D.findPeaks(yt.detach().cpu().numpy().astype(np.float32))
+      pts = PR.findPeaks(y)
+      gt_pts = PR.findPeaks(yt.detach().cpu().numpy().astype(np.float32))
       
       ## filter border points
       patch_shape   = np.array(x.shape)
-      pts2    = [p for p in pts if np.all(p%(patch_shape-D.border) > D.border)]
-      gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-D.border) > D.border)]
+      pts2    = [p for p in pts if np.all(p%(patch_shape-PR.border) > PR.border)]
+      gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-PR.border) > PR.border)]
 
-      matching = D.snnMatch(gt_pts2, pts2)
+      matching = PR.snnMatch(gt_pts2, pts2)
       scores = SN(loss=loss, f1=matching.f1, height=y.max())
       return y, scores
 
@@ -625,7 +624,7 @@ def train(D, dataset=None,continue_training=False):
 
     history.valimeans.append(np.nanmean(_valiscores,axis=0))
 
-    torch.save(net.state_dict(), D.savedir / f'train/m/best_weights_latest.pt')
+    torch.save(net.state_dict(), PR.savedir / f'train/m/best_weights_latest.pt')
 
     valikeys   = ['loss','f1','height']
     valiinvert = [1,-1,-1] # minimize, maximize, maximize
@@ -633,23 +632,23 @@ def train(D, dataset=None,continue_training=False):
 
     for i,k in enumerate(valikeys):
       if np.nanmin(valis[:,i])==valis[-1,i]:
-        torch.save(net.state_dict(), D.savedir / f'train/m/best_weights_{k}.pt')
+        torch.save(net.state_dict(), PR.savedir / f'train/m/best_weights_{k}.pt')
 
   def predGlances(time):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       composite = mse_loss(traindata[i], augment=True, mode='glance')
-      save_png(D.savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
       composite = mse_loss(validata[i], augment=False, mode='glance')
-      save_png(D.savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
-  if D.ndim==2:
+  if PR.ndim==2:
     rate = 1.4 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec]
-  elif D.ndim==3:
+  elif PR.ndim==3:
     rate = 1.0 if str(device)!='cpu' else 0.0310 ## megapixels / sec 
   N_epochs=300 ## MYPARAM
   print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
@@ -659,7 +658,7 @@ def train(D, dataset=None,continue_training=False):
     tic = time()
     trainOneEpoch()
     validateOneEpoch()
-    save_pkl(D.savedir / "train/history.pkl", history)
+    save_pkl(PR.savedir / "train/history.pkl", history)
     if ep in range(10) or ep%10==0: predGlances(ep)
     dt  = time() - tic
 
@@ -670,45 +669,45 @@ def train(D, dataset=None,continue_training=False):
 Make predictions for each saved weight set : 'latest','loss','f1','height'
 Include avg/min across predictions too! Simple model ensembling.
 """
-def predict(D):
+def predict(PR):
 
-  wipedir(D.savedir / "predict")
+  wipedir(PR.savedir / "predict")
 
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-  net = D.buildUNet()
+  net = PR.buildUNet()
   net = net.to(device)
 
   def predsingle(dikt):
-    raw = load_tif(D.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    raw = zoom(raw, D.zoom,order=1)
+    raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
+    raw = zoom(raw, PR.zoom,order=1)
     raw = norm_percentile01(raw,2,99.4)
 
 
-    if D.mode=='withGT':
-      lab = load_tif(D.name_pts.format(**dikt)) #.transpose([])
+    if PR.mode=='withGT':
+      lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
       pts = np.array([x['centroid'] for x in regionprops(lab)])
       gtpts = [p for i,p in enumerate(gtpts) if classes[i] in ['p','pm']]
-      gtpts = (np.array(gtpts) * D.zoom).astype(np.int)
+      gtpts = (np.array(gtpts) * PR.zoom).astype(np.int)
 
     ## seamless prediction tiling
     pred = np.zeros(raw.shape)
-    for p in D.splitIntoPatchesPred(pred.shape):
+    for p in PR.splitIntoPatchesPred(pred.shape):
       x = torch.Tensor(raw[p.outer][None,None]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
 
     ## find and scale peaks back to orig space
     height = pred.max()    
-    pts = D.findPeaks(pred)
-    pts = zoom_pts(pts , 1 / np.array(D.zoom))
+    pts = PR.findPeaks(pred)
+    pts = zoom_pts(pts , 1 / np.array(PR.zoom))
 
     # ## filter border points
     # pred_shape   = np.array(pred.shape)
-    # pts2    = [p for p in pts if np.all(p%(pred_shape-D.border) > D.border)]
-    # gt_pts2 = [p for p in gt_pts if np.all(p%(pred_shape-D.border) > D.border)]
+    # pts2    = [p for p in pts if np.all(p%(pred_shape-PR.border) > PR.border)]
+    # gt_pts2 = [p for p in gt_pts if np.all(p%(pred_shape-PR.border) > PR.border)]
     
-    if D.mode=='withGT':
-      matching = D.snnMatch(gtpts,pts)
+    if PR.mode=='withGT':
+      matching = PR.snnMatch(gtpts,pts)
       print(dedent(f"""
           weights : {weights}
              time : {time:03d}
@@ -730,58 +729,56 @@ def predict(D):
 
     return SN(**locals())
 
-  N_imgs = len(D.predtimes)
+  N_imgs = len(PR.predtimes)
 
   ltps = []
   # rawpng_list = []
   for weights in ['latest']: #['latest','loss','f1','height']:
-    net.load_state_dict(torch.load(D.savedir / f'train/m/best_weights_{weights}.pt'))
+    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt'))
 
-    for i, dikt in enumerate(D.predtimes):
+    for i, dikt in enumerate(PR.predtimes):
       # print("\033[F",end='') ## move cursor UP one line 
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
 
       d = predsingle(dikt)
       ltps.append(d.pts)
       # rawpng_list.append(d.rawpng)
-      # save_png(D.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
+      # save_png(PR.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
 
   print(f"Run tracking...", end='\n',flush=True)
-  rawshape = load_tif(D.name_raw.format(**D.predtimes[0])).shape
+  rawshape = load_tif(PR.name_raw.format(**PR.predtimes[0])).shape
   track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
 
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
   cmap = matplotlib.colors.ListedColormap(cmap)
 
-  wipedir(D.savedir/"track/png")
-  # wipedir(D.savedir/"track/tif")
+  wipedir(PR.savedir/"track/png")
+  # wipedir(PR.savedir/"track/tif")
   # for time, lab in enumerate():
-  for i, dikt in enumerate(D.predtimes):
+  for i, dikt in enumerate(PR.predtimes):
 
     # print("\033[F",end='') ## move cursor UP one line 
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
 
-    raw = img2png(load_tif(D.name_raw.format(**dikt)).astype(np.float32))
+    raw = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32))
     # raw = rawpng_list[i]
     labpng = img2png(track_labeled_images[i], colors=cmap)
     composite = np.round(raw/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
-    # save_tif(D.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
-    # save_png(D.savedir/"track/c{time:03d}.png".format(**dikt), composite)
-    # save_png(D.savedir/"track/r{time:03d}.png".format(**dikt), raw)
-    save_png(D.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
-
-
+    # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
+    # save_png(PR.savedir/"track/c{time:03d}.png".format(**dikt), composite)
+    # save_png(PR.savedir/"track/r{time:03d}.png".format(**dikt), raw)
+    save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
 
 
 if __name__=="__main__":
-  arg = sys.argv[1]
-  if arg:
-    D = params(arg)
+  isbiname = sys.argv[1]
+  if isbiname:
+    PR = params(isbiname)
   else:
-    D = params()
-  dataset = data(D)
-  train(D, dataset, continue_training=0)
-  predict(D)
+    PR = params()
+  dataset = data(PR)
+  train(PR, dataset, continue_training=0)
+  predict(PR)
 
