@@ -18,6 +18,8 @@ def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 import torch
 
+import networkx as nx
+
 from matplotlib                import pyplot as plt
 from scipy.ndimage             import label as labelComponents
 from scipy.ndimage             import zoom
@@ -34,8 +36,8 @@ from isbidata import isbi_times, isbi_scales
 
 ## local
 from torch_models import Unet3, init_weights, nn
-from match import snnMatch
-import tracking
+from pointmatch import snnMatch
+import tracking2
 
 """
 RUN ME ON SLURM!!
@@ -82,9 +84,12 @@ def wipedir(path):
   path.mkdir(parents=True, exist_ok=True)
 
 
+
 """
 UTILITIES
 """
+
+
 
 def createTarget(pts, target_shape, sigmas):
   s  = np.array(sigmas)
@@ -313,12 +318,14 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   N = len(alldata)
   PR.traintimes = alldata[:N*7//8]
   # PR.predtimes = alldata[N*7//8:]
-  PR.predtimes = np.array([dict(dset=d, time=t) 
+  PR.predtimes = np.array([dict(dset=d, time=t)
                         for d in ['01']
                         for t in range(tb[d][0], tb[d][0]+3)])
   
   ## predict
   PR.mode = 'NoGT' ## 'withGT'
+
+  aniso = np.array(isbi_scales[isbiname])
 
   if PR.ndim==2:
     ## data, predict
@@ -336,9 +343,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   if PR.ndim==3:
     ## data, predict
     PR.zoom = (1, 0.25, 0.25)
+    aniso = aniso / aniso[2]
     ## train, predict
-    aniso = np.array(isbi_scales[isbiname])
-    aniso = aniso / aniso[2] # 
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=aniso)
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
@@ -347,6 +353,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.sigma = (3,5,5)
     ## train
     PR.border = [0,0,0]
+
+  PR.aniso = aniso
 
   if isbiname=="Fluo-N3DH-CHO": # shape = (5,111,128)
     PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
@@ -686,8 +694,7 @@ def predict(PR):
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
       pts = np.array([x['centroid'] for x in regionprops(lab)])
-      gtpts = [p for i,p in enumerate(gtpts) if classes[i] in ['p','pm']]
-      gtpts = (np.array(gtpts) * PR.zoom).astype(np.int)
+      gtpts = zoom_pts(np.array(gtpts) , PR.zoom) #.astype(np.int)
 
     ## seamless prediction tiling
     pred = np.zeros(raw.shape)
@@ -707,7 +714,7 @@ def predict(PR):
     # gt_pts2 = [p for p in gt_pts if np.all(p%(pred_shape-PR.border) > PR.border)]
     
     if PR.mode=='withGT':
-      matching = PR.snnMatch(gtpts,pts)
+      matching = PR.snnMatch(gtpts, pts)
       print(dedent(f"""
           weights : {weights}
              time : {time:03d}
@@ -746,9 +753,12 @@ def predict(PR):
       # save_png(PR.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
 
-  print(f"Run tracking...", end='\n',flush=True)
+  print(f"Run tracking...", end='\n', flush=True)
   rawshape = load_tif(PR.name_raw.format(**PR.predtimes[0])).shape
-  track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
+  # track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
+  # list_of_edges, list_of_labels = trackAndLabel(ltps)
+  tb = tracking2.nn_tracking(ltps, aniso=PR.aniso)
+  tracking2.draw(tb)
 
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
@@ -762,13 +772,15 @@ def predict(PR):
     # print("\033[F",end='') ## move cursor UP one line 
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
 
-    raw = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32))
-    # raw = rawpng_list[i]
-    labpng = img2png(track_labeled_images[i], colors=cmap)
-    composite = np.round(raw/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
+    rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32))
+    # ipdb.set_trace()
+    # lab = tracking2.make_ISBI_label_img(tb,dikt['time'],rawpng.shape[:-1],halfwidth=6)
+    lab = tracking2.createTarget(tb,dikt['time'],rawpng.shape[:-1], PR.sigma)
+    labpng = img2png(lab, colors=cmap)
+    composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
     # save_png(PR.savedir/"track/c{time:03d}.png".format(**dikt), composite)
-    # save_png(PR.savedir/"track/r{time:03d}.png".format(**dikt), raw)
+    # save_png(PR.savedir/"track/r{time:03d}.png".format(**dikt), rawpng)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
 
 
@@ -778,7 +790,13 @@ if __name__=="__main__":
     PR = params(isbiname)
   else:
     PR = params()
-  dataset = data(PR)
-  train(PR, dataset, continue_training=0)
+  # dataset = data(PR)
+  # train(PR, dataset, continue_training=0)
   predict(PR)
+
+
+
+
+
+
 

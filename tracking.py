@@ -115,27 +115,31 @@ def testMinCostTrackWithDivisions(N=10, D=1, b=2):
   edges = minCostTrackWithDivisions(pts0,pts1)
   # plt.imshow(edges)
 
-def makeISBILabels(list_of_pointclouds, rawshape):
+def make_ISBI_label_img(pts, labels, rawshape):
   assert len(rawshape) in (2,3)
   rawshape = np.array(rawshape)
-  list_of_edges, list_of_labels = trackAndLabel(list_of_pointclouds)
-  mantrack_list = []
-  s1,s2 = set(),set()
-  for i,_ in enumerate(list_of_labels):
+  mantrack = np.zeros(rawshape, np.uint32)
+  for dx in np.arange(-6,6):
+    for dy in np.arange(-6,6):
+      p = (pts + (dx,dy)).clip(min=(0,0), max=rawshape-(1,1))
+      mantrack[tuple(p.T)] = list_of_labels[i]
+  return mantrack
 
-    ## test for cell additions and removals
-    # s2 = set(list_of_labels[i])
-    # print("s2 - s1", s2 - s1)
-    # print("s1 - s2", s1 - s2)
-    # # plt.imshow(list_of_edges[i])
-    # s1 = s2
-    mantrack = np.zeros(rawshape, np.uint32)
-    pts = list_of_pointclouds[i]
-    for dx in np.arange(-6,6):
-      for dy in np.arange(-6,6):
-        p = (pts + (dx,dy)).clip(min=(0,0), max=rawshape-(1,1))
-        mantrack[tuple(p.T)] = list_of_labels[i]
-    mantrack_list.append(mantrack)
-    # ipdb.set_trace()
-  return mantrack_list
+  # list_of_edges, list_of_labels = trackAndLabel(list_of_pointclouds)
+  # mantrack_list = []
+  # s1,s2 = set(),set()
+  # for i,_ in enumerate(list_of_labels):
+  #   mantrack = np.zeros(rawshape, np.uint32)
+  #   pts = list_of_pointclouds[i]
+  #   for dx in np.arange(-6,6):
+  #     for dy in np.arange(-6,6):
+  #       p = (pts + (dx,dy)).clip(min=(0,0), max=rawshape-(1,1))
+  #       mantrack[tuple(p.T)] = list_of_labels[i]
+  #   mantrack_list.append(mantrack)
+  #   # ipdb.set_trace()
+  # return mantrack_list
   # if mantrack.ndim == 3: mantrack = mantrack.sum(0)
+
+
+
+
