@@ -18,7 +18,8 @@ sbatch -J PSC       -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o sl
 sbatch -J TRIC      -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/"TRIC".out      -e slurm_out/"TRIC".err      --wrap '/bin/time -v python cpnet.py Fluo-N3DL-TRIC'
 sbatch -J U373      -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/"U373".out      -e slurm_out/"U373".err      --wrap '/bin/time -v python cpnet.py PhC-C2DH-U373'
 
-# Actual Runtime
+# Actual Runtime (1/16 * 7/8 for training)
+
 # A549        0:04.70
 # A549-SIM    0:04.71
 # C2DH-HeLa   3:29.91
@@ -38,4 +39,5 @@ sbatch -J U373      -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o sl
 # PSC         3:41.34
 # TRIC        0:09.34
 # U373        3:42.05
+
 # TRIF        -- no data yet

@@ -138,14 +138,23 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   """
   
   img_shape = array(img_shape)
-  outer_shape = array(outer_shape)
-  min_border_shape = array(min_border_shape)
   divisor = array(divisor)
+  min_border_shape = array(min_border_shape)
+
+  ## This means we'll have one image with almost all the content in the mask, and 2^d - 1 other images with almost no content.
+  ## One alternative is to rescale images to a nice multiple of divisor? Or pad them ? 
+  ## We could rely on this !? Small images are resized 
+  # patchmax = floor(img_shape/divisor)*divisor 
+  # outer_shape = array(outer_shape).clip(max=patchmax)
   
   # make shapes divisible by 8
-  assert all(outer_shape % divisor == 0), f"Error: `outer_shape` {outer_shape}%8 != 0."
-  assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit"
-  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide"
+
+  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide ... "
+  assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit. inner: {img_shape}, outer: {outer_shape} ..."
+  for i in range(len(img_shape)):
+    if (img_shape[i] > outer_shape[i]): assert outer_shape[i]%divisor[i] == 0, f"Error: `outer_shape[i]`%8 != 0. {outer_shape}[{i}]."
+
+  # assert all(outer_shape % divisor == 0), f"Error: `outer_shape` {outer_shape}%8 != 0 ..."
 
   # our actual shape will be <= this desired shape. `outer_shape` is fixed,
   # but the border shape will grow.
@@ -202,6 +211,19 @@ def zoom_pts(pts,scale):
   pts = pts-0.5                         ## move origin back to middle of first bin
   pts = np.round(pts).astype(np.uint32) ## binning
   return pts
+
+# def zoom_pts(pts,scale):
+#   """
+#   rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
+#   """
+#   # assert type(pts) is np.ndarray
+#   pts = pts+0.5                         ## move origin from middle of first bin to left boundary (array index convention)
+#   pts = pts * scale                     ## rescale
+#   pts = pts-0.5                         ## move origin back to middle of first bin
+#   pts = np.round(pts).astype(np.uint32) ## binning
+#   return pts
+
+
 
 def img2png(x,colors=None):
 
@@ -297,11 +319,15 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR.ndim = 2 if "2D" in isbiname else 3
   ## data, predict
   
-  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  base = f"{isbiname}/"
+  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  # base = f"{isbiname}/"
   tb = isbi_times[isbiname]
   PR.name_raw = base + "{dset}/t{time:03d}.tif"
   PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+
+  if isbiname in ['BF-C2DL-HSC', 'BF-C2DL-MuSC']:
+    PR.name_raw = PR.name_raw.replace('{time:03d}', '{time:04d}')
+    PR.name_pts = PR.name_pts.replace('{time:03d}', '{time:04d}')
   
   ## data
   # PR.traintimes = [dict(dset=d, time=t) for t in range(0,91,17) for d in ["01","02"]]
@@ -775,7 +801,7 @@ def predict(PR):
     rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32))
     # ipdb.set_trace()
     # lab = tracking2.make_ISBI_label_img(tb,dikt['time'],rawpng.shape[:-1],halfwidth=6)
-    lab = tracking2.createTarget(tb,dikt['time'],rawpng.shape[:-1], PR.sigma)
+    lab = tracking2.createTarget(tb, i, rawshape, PR.sigma) ## WARNING: Using index `i` instead of dikt['time']
     labpng = img2png(lab, colors=cmap)
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
@@ -790,8 +816,8 @@ if __name__=="__main__":
     PR = params(isbiname)
   else:
     PR = params()
-  # dataset = data(PR)
-  # train(PR, dataset, continue_training=0)
+  dataset = data(PR)
+  train(PR, dataset, continue_training=0)
   predict(PR)
 
 
