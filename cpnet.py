@@ -125,15 +125,16 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   should be half the receptive field width of our CNN.
 
   CONSTRAINTS
-  outer shape % 8 == 0 in XY (last two dims)
+  outer_shape % divisor == 0
   img_shape   >= outer_shape 
-  outer_shape >= 2*min_border_shape
+  outer_shape > 2*min_border_shape
 
   GUARANTEES
-  outer shape == outer_shape forall patches
-  inner shape <= outer_shape - min_border_shape
-  acutal boder shape >= min_border_shape forall patches except on image bounds
-  max(inner shape) - min(inner shape) <= 1 forall shapes
+  outer_shape = constant across patches
+  inner_shape <= outer_shape - 2 * min_border_shape
+
+  borders are evenly distributed on all sides, except on image boundaries
+  max(inner_shapes across patches) - min(inner_shapes across patches) <= 1 forall shapes
   
   """
   
@@ -145,16 +146,14 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   ## One alternative is to rescale images to a nice multiple of divisor? Or pad them ? 
   ## We could rely on this !? Small images are resized 
   # patchmax = floor(img_shape/divisor)*divisor 
-  # outer_shape = array(outer_shape).clip(max=patchmax)
-  
-  # make shapes divisible by 8
 
-  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide ... "
+  ## img_shape % divisor == 0 (REQUIRED)
+  assert all(img_shape % divisor == 0), f"img_shape ({img_shape}) not divisible by ({divisor})"
+  outer_shape = array(outer_shape).clip(max=img_shape)
   assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit. inner: {img_shape}, outer: {outer_shape} ..."
-  for i in range(len(img_shape)):
-    if (img_shape[i] > outer_shape[i]): assert outer_shape[i]%divisor[i] == 0, f"Error: `outer_shape[i]`%8 != 0. {outer_shape}[{i}]."
 
-  # assert all(outer_shape % divisor == 0), f"Error: `outer_shape` {outer_shape}%8 != 0 ..."
+  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide: {outer_shape} < 2*{min_border_shape}"
+
 
   # our actual shape will be <= this desired shape. `outer_shape` is fixed,
   # but the border shape will grow.
@@ -300,44 +299,34 @@ def norm_percentile01(x,p0,p1):
     return (x-lo)/(hi-lo)
 
 
-
 """
 Parameters for data(), train(), and predict()
 """
 def params(isbiname = "Fluo-C2DL-Huh7"):
-  PR = SN()
-
-  savedir = Path(f"cpnet-out/{isbiname}/")
 
   # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
   # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
   # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
+  savedir = Path(f"cpnet-out/{isbiname}/")
+  savedir.mkdir(parents=True,exist_ok=True)
+  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  base = f"{isbiname}/"
 
+  ####### data, train, predict #######
+
+  PR = SN()
   PR.isbiname = isbiname
   PR.savedir = savedir
-
   PR.ndim = 2 if "2D" in isbiname else 3
-  ## data, predict
-  
-  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  # base = f"{isbiname}/"
-  tb = isbi_times[isbiname]
   PR.name_raw = base + "{dset}/t{time:03d}.tif"
   PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
-
   if isbiname in ['BF-C2DL-HSC', 'BF-C2DL-MuSC']:
     PR.name_raw = PR.name_raw.replace('{time:03d}', '{time:04d}')
     PR.name_pts = PR.name_pts.replace('{time:03d}', '{time:04d}')
-  
-  ## data
-  # PR.traintimes = [dict(dset=d, time=t) for t in range(0,91,17) for d in ["01","02"]]
-  ## predict
-  # PR.predtimes =  [dict(dset=d, time=t) for t in range(3,91,17) for d in ["01","02"]]
-
+  tb = isbi_times[isbiname]
   alldata = np.array([dict(dset=d, time=t) 
                         for d in ['01','02']
                         for t in range(tb[d][0], tb[d][1])])
-
   np.random.seed(42)
   np.random.shuffle(alldata)
   alldata = alldata[:16]
@@ -347,40 +336,58 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR.predtimes = np.array([dict(dset=d, time=t)
                         for d in ['01']
                         for t in range(tb[d][0], tb[d][0]+3)])
+
+
+  # ## cache first image size
+  # if (savedir / "data-cache.pkl").is_file():
+  #   cache = load_pkl(savedir / "data-cache.pkl")
+  #   rawsize = cache.rawsize
+  # else:
+  #   cache = SN()
+  #   rawsize = load_tif(PR.name_raw.format(**alldata[0])).shape
+  #   cache.rawsize = rawsize
+  #   save_pkl(savedir / "data-cache.pkl", cache)
   
   ## predict
   PR.mode = 'NoGT' ## 'withGT'
-
-  aniso = np.array(isbi_scales[isbiname])
+  PR.aniso = np.array(isbi_scales[isbiname])
 
   if PR.ndim==2:
+
     ## data, predict
-    PR.zoom = (0.25, 0.25)
+    PR.divisor = (8,8)
+    PR.outer_shape = (128,128)
+    PR.zoom = (0.25,0.25)
+    
     ## train, predict
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1]) ## y_true, y_predicted
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
+
     ## data
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(128,128), min_border_shape=(16,16), divisor=(8,8))
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(16,16), divisor=PR.divisor)
     PR.sigma = (5,5)
+
     ## train
     PR.border = [0,0]
 
   if PR.ndim==3:
+
     ## data, predict
-    PR.zoom = (1, 0.25, 0.25)
-    aniso = aniso / aniso[2]
+    PR.outer_shape = (16,128,128)
+    PR.divisor = (1,8,8)
+    PR.zoom = (1, 0.25,0.25)
+    PR.aniso = PR.aniso / PR.aniso[2]
+
     ## train, predict
-    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=aniso)
+    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=PR.aniso)
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
     ## data
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(16,128,128), min_border_shape=(4,16,16), divisor=(1,8,8))
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(4,16,16), divisor=PR.divisor)
     PR.sigma = (3,5,5)
     ## train
     PR.border = [0,0,0]
-
-  PR.aniso = aniso
 
   if isbiname=="Fluo-N3DH-CHO": # shape = (5,111,128)
     PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
@@ -409,16 +416,37 @@ Const outer size % 8 = 0.
 """
 def data(PR):
 
+  # def compute_zoom(rawsize,desired_zoom,divisor):
+  #   rawsize = array(rawsize)
+  #   desired_zoom = array(desired_zoom)
+  #   desired_rawsize = rawsize*desired_zoom
+  #   desired_rawsize_fixed = ceil(desired_rawsize/divisor)*divisor
+  #   zoom_fixed = desired_rawsize_fixed / rawsize
+  #   return zoom_fixed
+
+  ## ONLY pad on the right ends, so `pts` location is still valid.
+  def pad_until_divisible(raw, patch_size, divisor):
+    rawsize = array(raw.shape)
+    patch_size = array(patch_size)
+    divisor = array(divisor)
+    desired_rawsize = ceil(rawsize/divisor)*divisor
+    padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0)
+    raw = np.pad(raw, [(0,p) for p in padding], constant_values=0)
+    return raw
+
   def f(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])
     lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
     pts = np.array([x['centroid'] for x in regionprops(lab)])
+    print("rawshape 1: ", raw.shape)
     raw = zoom(raw, PR.zoom, order=1)
+    print("rawshape 2: ", raw.shape)
+    raw = pad_until_divisible(raw, PR.outer_shape, PR.divisor)
+    print("rawshape 3: ", raw.shape)
     # lab = zoom(lab, PR.zoom, order=1)
     pts = zoom_pts(pts, PR.zoom)
     raw = norm_percentile01(raw,2,99.4)
     target = createTarget(pts, raw.shape, PR.sigma)
-    print("rawshape: ", raw.shape)
     patches = PR.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
@@ -683,7 +711,7 @@ def train(PR, dataset=None,continue_training=False):
   if PR.ndim==2:
     rate = 1.4 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec]
   elif PR.ndim==3:
-    rate = 1.0 if str(device)!='cpu' else 0.0310 ## megapixels / sec 
+    rate = 1.0 if str(device)!='cpu' else 0.0310 # [megapixels / sec]
   N_epochs=300 ## MYPARAM
   print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
@@ -713,9 +741,12 @@ def predict(PR):
 
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    raw = zoom(raw, PR.zoom,order=1)
+    print("rawshape 1: ", raw.shape)
+    raw = zoom(raw, PR.zoom, order=1)
+    print("rawshape 2: ", raw.shape)
+    raw = pad_until_divisible(raw, PR.outer_shape, PR.divisor)
+    print("rawshape 3: ", raw.shape)
     raw = norm_percentile01(raw,2,99.4)
-
 
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])

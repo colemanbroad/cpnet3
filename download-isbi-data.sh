@@ -9,3 +9,7 @@ rm Fluo-C2DL-Huh7.zip
 # wget --no-check-certificate http://data.celltrackingchallenge.net/training-datasets/PhC-C2DL-PSC.zip 
 # unzip PhC-C2DL-PSC.zip
 # rm -rf PhC-C2DL-PSC.zip
+
+wget --no-check-certificate http://data.celltrackingchallenge.net/training-datasets/Fluo-C3DH-A549.zip 
+unzip Fluo-C3DH-A549.zip
+rm -rf Fluo-C3DH-A549.zip

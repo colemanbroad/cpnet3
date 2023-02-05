@@ -7,7 +7,7 @@ cd ~/Desktop/mpi-remote/project-broaddus/
 # ext="rawdata/isbi_challenge_out_extra/trackingvideo/"
 # ext="rawdata/isbi_challenge_out_extra/Fluo-N3DL-TRIF/"
 
-ext="cpnet3/main/Fluo-N3DH-CHO/"
+ext="cpnet3/cpnet-out"
 
 # open $ext
 # exit
@@ -27,4 +27,4 @@ rsync -r \
       --include "*/history.pkl" \
       --include "*.png" \
       --exclude "*" \
-  efal:/projects/project-broaddus/$ext $ext
+  efal:/projects/project-broaddus/$ext/ $ext
