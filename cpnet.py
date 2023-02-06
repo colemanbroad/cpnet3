@@ -8,8 +8,6 @@ import shutil
 from textwrap import dedent
 from itertools import product
 import sys
-from glob import glob
-import re
 
 ## standard scipy
 import ipdb
@@ -58,83 +56,14 @@ def save_png(name, img):
 def save_tif(name, img):
   imsave(name, img, check_contrast=False)
 
-def plotHistory():
-
-  PR = params()
-
-  # allhistories = glob("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*/train/history.pkl")
-  # isbinames = [re.match("cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
-
-  history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/Fluo-N3DH-CHO/train/history.pkl")
-  # history = load_pkl(PR.savedir/"train/history.pkl")
-  fig, ax = plt.subplots(nrows=4,sharex=True, )
-
-  ax[0].plot(np.log(history.lossmeans), label="log train loss")
-  ax[0].legend()
-
-  valis = np.array(history.valimeans)
-
-  ax[0+1].plot(np.log(valis[:,0]), label="log vali loss")
-  ax[0+1].legend()
-
-  ax[1+1].plot(valis[:,1], label="f1")
-  ax[1+1].legend()
-
-  ax[2+1].plot(valis[:,2], label="height")
-  ax[2+1].legend()
-
-def plotAllHistories():
-
-  PR = params()
-
-  allhistories = glob("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*/train/history.pkl")
-  # ipdb.set_trace()
-  isbinames = [re.search(r"cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
-  fig, ax = plt.subplots(nrows=len(isbinames),sharex=True, sharey=True,)
-  metric = 'f1' ## 'f1' ## 'loss' 'max height'
-
-  for i,name in enumerate(allhistories):
-    history = load_pkl(name)
-    # Shrink current axis by 20%
-    box = ax[i].get_position()
-    ax[i].set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    if metric=='f1':
-      ax[i].plot(array(history.valimeans)[:,1], label=f"{isbinames[i]}") ## f1 detection
-    if metric=='loss':
-      ax[i].plot(np.log10(array(history.valimeans)[:,0]), label=f"{isbinames[i]}") ## vali loss
-    if metric=='max height':
-      ax[i].plot(array(history.valimeans)[:,2], label=f"{isbinames[i]}") ## max height of output
-
-    # ax[i].plot(np.log(history.lossmeans), label=f"{isbinames[i]}")
-    ax[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
-  plt.suptitle(f"{metric} Detection metric")
-  plt.tight_layout()
-  plt.show()
-
-  # valis = np.array(history.valimeans)
-
-  # ax[0+1].plot(np.log(valis[:,0]), label="log vali loss")
-  # ax[0+1].legend()
-
-  # ax[1+1].plot(valis[:,1], label="f1")
-  # ax[1+1].legend()
-
-  # ax[2+1].plot(valis[:,2], label="height")
-  # ax[2+1].legend()
-
 def wipedir(path):
   path = Path(path)
   if path.exists(): shutil.rmtree(path)
   path.mkdir(parents=True, exist_ok=True)
 
-
-
 """
 UTILITIES
 """
-
-
 
 def createTarget(pts, target_shape, sigmas):
   s  = np.array(sigmas)
@@ -247,10 +176,8 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   res = [g(s) for s in product(*slices_lists)]
   return res
 
+## rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
 def zoom_pts(pts,scale):
-  """
-  rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
-  """
   # assert type(pts) is np.ndarray
   pts = pts+0.5                         ## move origin from middle of first bin to left boundary (array index convention)
   pts = pts * scale                     ## rescale
@@ -258,19 +185,15 @@ def zoom_pts(pts,scale):
   pts = np.round(pts).astype(np.uint32) ## binning
   return pts
 
-# def zoom_pts(pts,scale):
-#   """
-#   rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
-#   """
-#   # assert type(pts) is np.ndarray
-#   pts = pts+0.5                         ## move origin from middle of first bin to left boundary (array index convention)
-#   pts = pts * scale                     ## rescale
-#   pts = pts-0.5                         ## move origin back to middle of first bin
-#   pts = np.round(pts).astype(np.uint32) ## binning
-#   return pts
-
-
-def img2png(x,colors=None):
+## x : image::ndarray
+## kind : in ['I','L'] for "Intensity" / "Label"
+## colors : colormap
+def img2png(x, kind, colors=None):
+  
+  assert kind in ['I','L']
+  if 'float' in str(x.dtype): assert kind=='I'
+  elif 'int' in str(x.dtype): assert kind=='L'
+  else: assert False, f'kind {kind} does not match image type {x.dtype}.'
 
   if 'float' in str(x.dtype) and colors:
     # assert type(colors) is matplotlib.colors.ListedColormap
@@ -355,9 +278,15 @@ def pad_until_divisible(raw, patch_size, divisor, return_pad=False):
   if return_pad: return raw, padding
   return raw
 
-"""
-Parameters for data(), train(), and predict()
-"""
+# def compute_zoom(rawsize,desired_zoom,divisor):
+#   rawsize = array(rawsize)
+#   desired_zoom = array(desired_zoom)
+#   desired_rawsize = rawsize*desired_zoom
+#   desired_rawsize_fixed = ceil(desired_rawsize/divisor)*divisor
+#   zoom_fixed = desired_rawsize_fixed / rawsize
+#   return zoom_fixed
+
+## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
 
   # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
@@ -365,8 +294,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
   savedir = Path(f"cpnet-out/{isbiname}/")
   savedir.mkdir(parents=True,exist_ok=True)
-  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  # base = f"{isbiname}/"
+  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  base = f"data-isbi/{isbiname}/"
 
   ####### data, train, predict #######
 
@@ -466,19 +395,9 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   return PR
 
 
-"""
-Tiling patches with overlapping borders. Requires loss masking.
-Const outer size % 8 = 0.
-"""
+## Tiling patches with overlapping borders. Requires loss masking.
+## Const outer size % 8 = 0.
 def data(PR):
-
-  # def compute_zoom(rawsize,desired_zoom,divisor):
-  #   rawsize = array(rawsize)
-  #   desired_zoom = array(desired_zoom)
-  #   desired_rawsize = rawsize*desired_zoom
-  #   desired_rawsize_fixed = ceil(desired_rawsize/divisor)*divisor
-  #   zoom_fixed = desired_rawsize_fixed / rawsize
-  #   return zoom_fixed
 
   def f(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])
@@ -511,16 +430,15 @@ def data(PR):
   ## save train/vali/test data
   wipedir(PR.savedir/"data/png/")
   for i,s in enumerate(data[::10]):
-    r = img2png(s.raw)
-    t = img2png(s.target, colors=plt.cm.magma)
+    r = img2png(s.raw, 'I')
+    t = img2png(s.target, 'I', colors=plt.cm.magma)
     composite = r//2 + t//2 
     imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
 
-"""
-NOTE: train() includes additional data filtering.
-"""
+
+## NOTE: train() includes additional data filtering.
 def train(PR, dataset=None,continue_training=False):
 
   CONTINUE = continue_training
@@ -697,10 +615,10 @@ def train(PR, dataset=None,continue_training=False):
       return y, scores
 
     if mode=='glance':
-      r = img2png(x.cpu().numpy())
-      p = img2png(y.cpu().numpy(),colors=plt.cm.magma)
-      w = img2png(w.cpu().numpy())
-      t = img2png((yt > 0.9).cpu().numpy().astype(np.uint8))
+      r = img2png(x.cpu().numpy(), 'I')
+      p = img2png(y.cpu().numpy(), 'I',colors=plt.cm.magma)
+      w = img2png(w.cpu().numpy(), 'I')
+      t = img2png((yt > 0.9).cpu().numpy().astype(np.uint8), 'L')
       composite = np.round(r/3 + p/3 + w/3).astype(np.uint8).clip(min=0,max=255)
       m = np.any(t[:,:,:3]!=0 , axis=2)
       composite[m] = t[m]
@@ -773,10 +691,9 @@ def train(PR, dataset=None,continue_training=False):
     print("\033[F",end='') ## move cursor UP one line 
     print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={n_pix/dt:5f} Mpix/s", end='\n',flush=True)
 
-"""
-Make predictions for each saved weight set : 'latest','loss','f1','height'
-Include avg/min across predictions too! Simple model ensembling.
-"""
+
+## Make predictions for each saved weight set : 'latest','loss','f1','height'
+## Include avg/min across predictions too! Simple model ensembling.
 def predict(PR):
 
   wipedir(PR.savedir / "predict")
@@ -829,8 +746,8 @@ def predict(PR):
         """))
 
     def f():
-      r = img2png(raw)
-      p = img2png(labelComponents(pred>0.5)[0]) #, colors=plt.cm.magma)
+      r = img2png(raw, 'I')
+      p = img2png(labelComponents(pred>0.5)[0], 'L') #, colors=plt.cm.magma)
       composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
       # ipdb.set_trace()
       # t = img2png((yt > 0.9).numpy().astype(np.uint8))
@@ -857,13 +774,16 @@ def predict(PR):
       # rawpng_list.append(d.rawpng)
       # save_png(PR.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
-
   print(f"Run tracking...", end='\n', flush=True)
   rawshape = load_tif(PR.name_raw.format(**PR.preddata[0])).shape
   # track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
   # list_of_edges, list_of_labels = trackAndLabel(ltps)
   tb = tracking2.nn_tracking(ltps, aniso=PR.aniso)
-  tracking2.draw(tb)
+
+  # tracking2.draw(tb)
+  # plt.ion()
+  # plt.show()
+  # input()
 
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
@@ -877,11 +797,11 @@ def predict(PR):
     # print("\033[F",end='') ## move cursor UP one line 
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
 
-    rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32))
+    rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32), 'I')
     # ipdb.set_trace()
-    # lab = tracking2.make_ISBI_label_img(tb,dikt['time'],rawpng.shape[:-1],halfwidth=6)
+    # lab = tracking2.make_ISBI_label_img(tb,i,rawshape,halfwidth=6)
     lab = tracking2.createTarget(tb, i, rawshape, PR.sigma) ## WARNING: Using index `i` instead of dikt['time']
-    labpng = img2png(lab, colors=cmap)
+    labpng = img2png(lab, 'L', colors=cmap)
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
     # save_png(PR.savedir/"track/c{time:03d}.png".format(**dikt), composite)
@@ -895,8 +815,8 @@ if __name__=="__main__":
     PR = params(isbiname)
   else:
     PR = params()
-  dataset = data(PR)
-  train(PR, dataset, continue_training=0)
+  # dataset = data(PR)
+  # train(PR, dataset, continue_training=0)
   predict(PR)
 
 

@@ -111,7 +111,7 @@ def make_ISBI_label_img(tb, time, rawshape, halfwidth=6):
 ## img_shape: tuple
 ## sigmas: tuple of radii for label marker
 def createTarget(tb, time, img_shape, sigmas):
-  s  = np.array(sigmas)
+  s  = np.array(sigmas).astype(float)
   ks = floor(7*s).astype(int)   ## extend support to 7/2 sigma in every direc
   ks = ks - ks%2 + 1            ## enfore ODD shape so kernel is centered! 
 
@@ -122,13 +122,15 @@ def createTarget(tb, time, img_shape, sigmas):
   ## create a single Gaussian kernel array
   def f(x):
     x = x - (ks-1)/2
-    return (x*x/s/s).sum() < 1
+    return (x*x/s/s).sum() <= 1 ## radius squared
     # return exp(-(x*x/s/s).sum()/2)
   kern = array([f(x) for x in indices(ks).reshape((len(ks),-1)).T]).reshape(ks)
   
-  target = zeros(ks + img_shape) ## include border padding
-  w = ks//2                         ## center coordinate of kernel
-  pts_offset = pts + w              ## offset by padding
+  target = zeros(ks + img_shape).astype(np.int64) ## include border padding
+  w = ks//2                      ## center coordinate of kernel
+  pts_offset = pts + w           ## offset by padding
+
+  # ipdb.set_trace()
 
   for i,p in enumerate(pts_offset):
     target_slice = tuple(slice(a,b+1) for a,b in zip(p-w,p+w))
