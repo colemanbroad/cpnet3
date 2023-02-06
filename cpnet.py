@@ -91,17 +91,24 @@ def plotAllHistories():
   # ipdb.set_trace()
   isbinames = [re.search(r"cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
   fig, ax = plt.subplots(nrows=len(isbinames),sharex=True, sharey=True,)
+  metric = 'f1' ## 'f1' ## 'loss' 'max height'
 
   for i,name in enumerate(allhistories):
     history = load_pkl(name)
     # Shrink current axis by 20%
     box = ax[i].get_position()
     ax[i].set_position([box.x0, box.y0, box.width * 0.6, box.height])
-    ax[i].plot(array(history.valimeans)[:,1], label=f"{isbinames[i]}")
+    if metric=='f1':
+      ax[i].plot(array(history.valimeans)[:,1], label=f"{isbinames[i]}") ## f1 detection
+    if metric=='loss':
+      ax[i].plot(np.log10(array(history.valimeans)[:,0]), label=f"{isbinames[i]}") ## vali loss
+    if metric=='max height':
+      ax[i].plot(array(history.valimeans)[:,2], label=f"{isbinames[i]}") ## max height of output
+
     # ax[i].plot(np.log(history.lossmeans), label=f"{isbinames[i]}")
     ax[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-  plt.suptitle("snn-f1 Detection metric")
+  plt.suptitle(f"{metric} Detection metric")
   plt.tight_layout()
   plt.show()
 
@@ -372,20 +379,20 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   if isbiname in ['BF-C2DL-HSC', 'BF-C2DL-MuSC']:
     PR.name_raw = PR.name_raw.replace('{time:03d}', '{time:04d}')
     PR.name_pts = PR.name_pts.replace('{time:03d}', '{time:04d}')
-  tb = isbi_times[isbiname]
+  tb = isbi_times[isbiname] # TimeBounds : dset -> int
   alldata = np.array([dict(dset=d, time=t) 
-                        for d in ['01','02']
+                        for d in ['02']
                         for t in range(tb[d][0], tb[d][1])])
   np.random.seed(42)
   np.random.shuffle(alldata)
-  alldata = alldata[:16]
+  alldata = alldata[:4]
   N = len(alldata)
-  PR.traintimes = alldata[:N*7//8]
-  # PR.predtimes = alldata[N*7//8:]
-  PR.predtimes = np.array([dict(dset=d, time=t)
-                        for d in ['01']
-                        for t in range(tb[d][0], tb[d][0]+3)])
+  PR.trainvalidata = alldata[N*7//8:]
+  # PR.preddata = alldata[:N*7//8]
 
+  PR.preddata = np.array([dict(dset=d, time=t)
+                        for d in ['01']
+                        for t in range(tb[d][0], tb[d][0]+4)])
 
   # ## cache first image size
   # if (savedir / "data-cache.pkl").is_file():
@@ -495,7 +502,7 @@ def data(PR):
 
   # return pickle.load(open(str(PR.savedir / 'data/filtered.pkl'), 'rb'))
 
-  data = [f(dikt) for dikt in PR.traintimes]
+  data = [f(dikt) for dikt in PR.trainvalidata]
   data = [s for dat in data for s in dat]
 
   wipedir(PR.savedir/"data/")
@@ -834,14 +841,14 @@ def predict(PR):
 
     return SN(**locals())
 
-  N_imgs = len(PR.predtimes)
+  N_imgs = len(PR.preddata)
 
   ltps = []
   # rawpng_list = []
-  for weights in ['latest']: #['latest','loss','f1','height']:
+  for weights in ['loss']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt'))
 
-    for i, dikt in enumerate(PR.predtimes):
+    for i, dikt in enumerate(PR.preddata):
       # print("\033[F",end='') ## move cursor UP one line 
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
 
@@ -852,7 +859,7 @@ def predict(PR):
 
 
   print(f"Run tracking...", end='\n', flush=True)
-  rawshape = load_tif(PR.name_raw.format(**PR.predtimes[0])).shape
+  rawshape = load_tif(PR.name_raw.format(**PR.preddata[0])).shape
   # track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
   # list_of_edges, list_of_labels = trackAndLabel(ltps)
   tb = tracking2.nn_tracking(ltps, aniso=PR.aniso)
@@ -865,7 +872,7 @@ def predict(PR):
   wipedir(PR.savedir/"track/png")
   # wipedir(PR.savedir/"track/tif")
   # for time, lab in enumerate():
-  for i, dikt in enumerate(PR.predtimes):
+  for i, dikt in enumerate(PR.preddata):
 
     # print("\033[F",end='') ## move cursor UP one line 
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)

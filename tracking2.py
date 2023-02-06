@@ -132,7 +132,7 @@ def createTarget(tb, time, img_shape, sigmas):
 
   for i,p in enumerate(pts_offset):
     target_slice = tuple(slice(a,b+1) for a,b in zip(p-w,p+w))
-    target[target_slice] = kern*lab[i]
+    target[target_slice] = maximum(target[target_slice], kern*lab[i]) ## `maximum` puts labels on top of background (zero)
     # target[target_slice] = maximum(target[target_slice], kern)
 
   remove_pad = tuple(slice(a,a+b) for a,b in zip(w,img_shape))
