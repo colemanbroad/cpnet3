@@ -147,10 +147,12 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   ## We could rely on this !? Small images are resized 
   # patchmax = floor(img_shape/divisor)*divisor 
 
-  ## img_shape % divisor == 0 (REQUIRED)
-  assert all(img_shape % divisor == 0), f"img_shape ({img_shape}) not divisible by ({divisor})"
   outer_shape = array(outer_shape).clip(max=img_shape)
+  ## we just enforced this...
   assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit. inner: {img_shape}, outer: {outer_shape} ..."
+  ## outer_shape % divisor == 0 (REQUIRED)
+  ## Setting outer_shape.max = img_shape ensures that img_shape % 8 == 0 if img_shape < outer_shape
+  assert all(outer_shape % divisor == 0), f"img_shape ({img_shape}) not divisible by ({divisor})"
 
   assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide: {outer_shape} < 2*{min_border_shape}"
 
@@ -309,8 +311,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
   savedir = Path(f"cpnet-out/{isbiname}/")
   savedir.mkdir(parents=True,exist_ok=True)
-  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  base = f"{isbiname}/"
+  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  # base = f"{isbiname}/"
 
   ####### data, train, predict #######
 
