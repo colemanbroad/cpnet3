@@ -119,13 +119,15 @@ def createTarget(tb, time, img_shape, sigmas):
   lab = np.array([tb.nodes[n]['track'] for n in tb.nodes if n[0]==time])
   pts = np.array([tb.nodes[n]['pt'] for n in tb.nodes if n[0]==time])
 
+  if len(pts)==0: return zeros(img_shape).astype(np.int64)
+
   ## create a single Gaussian kernel array
   def f(x):
     x = x - (ks-1)/2
     return (x*x/s/s).sum() <= 1 ## radius squared
     # return exp(-(x*x/s/s).sum()/2)
   kern = array([f(x) for x in indices(ks).reshape((len(ks),-1)).T]).reshape(ks)
-  
+    
   target = zeros(ks + img_shape).astype(np.int64) ## include border padding
   w = ks//2                      ## center coordinate of kernel
   pts_offset = pts + w           ## offset by padding
