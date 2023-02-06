@@ -263,7 +263,6 @@ def zoom_pts(pts,scale):
 #   return pts
 
 
-
 def img2png(x,colors=None):
 
   if 'float' in str(x.dtype) and colors:
@@ -338,6 +337,16 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
+## ONLY pad on the right ends, so `pts` location is still valid.
+def pad_until_divisible(raw, patch_size, divisor, return_pad=False):
+  rawsize = array(raw.shape)
+  patch_size = array(patch_size)
+  divisor = array(divisor)
+  desired_rawsize = ceil(rawsize/divisor)*divisor
+  padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0)
+  raw = np.pad(raw, [(0,p) for p in padding], constant_values=0)
+  if return_pad: return raw, padding
+  return raw
 
 """
 Parameters for data(), train(), and predict()
@@ -463,16 +472,6 @@ def data(PR):
   #   desired_rawsize_fixed = ceil(desired_rawsize/divisor)*divisor
   #   zoom_fixed = desired_rawsize_fixed / rawsize
   #   return zoom_fixed
-
-  ## ONLY pad on the right ends, so `pts` location is still valid.
-  def pad_until_divisible(raw, patch_size, divisor):
-    rawsize = array(raw.shape)
-    patch_size = array(patch_size)
-    divisor = array(divisor)
-    desired_rawsize = ceil(rawsize/divisor)*divisor
-    padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0)
-    raw = np.pad(raw, [(0,p) for p in padding], constant_values=0)
-    return raw
 
   def f(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])
@@ -784,7 +783,7 @@ def predict(PR):
     print("rawshape 1: ", raw.shape)
     raw = zoom(raw, PR.zoom, order=1)
     print("rawshape 2: ", raw.shape)
-    raw = pad_until_divisible(raw, PR.outer_shape, PR.divisor)
+    raw, padding = pad_until_divisible(raw, PR.outer_shape, PR.divisor, return_pad=True)
     print("rawshape 3: ", raw.shape)
     raw = norm_percentile01(raw,2,99.4)
 
@@ -799,6 +798,8 @@ def predict(PR):
       x = torch.Tensor(raw[p.outer][None,None]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
+    ss = tuple([slice(0,s-p) for s,p in zip(pred.shape, padding)])
+    pred = pred[ss]
 
     ## find and scale peaks back to orig space
     height = pred.max()    
