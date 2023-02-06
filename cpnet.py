@@ -8,6 +8,8 @@ import shutil
 from textwrap import dedent
 from itertools import product
 import sys
+from glob import glob
+import re
 
 ## standard scipy
 import ipdb
