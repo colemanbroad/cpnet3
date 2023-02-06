@@ -60,8 +60,11 @@ def plotHistory():
 
   PR = params()
 
-  # history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/Fluo-N3DH-CHO/train/history.pkl")
-  history = load_pkl(PR.savedir/"train/history.pkl")
+  # allhistories = glob("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*/train/history.pkl")
+  # isbinames = [re.match("cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
+
+  history = load_pkl("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/Fluo-N3DH-CHO/train/history.pkl")
+  # history = load_pkl(PR.savedir/"train/history.pkl")
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
   ax[0].plot(np.log(history.lossmeans), label="log train loss")
@@ -77,6 +80,39 @@ def plotHistory():
 
   ax[2+1].plot(valis[:,2], label="height")
   ax[2+1].legend()
+
+def plotAllHistories():
+
+  PR = params()
+
+  allhistories = glob("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*/train/history.pkl")
+  # ipdb.set_trace()
+  isbinames = [re.search(r"cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
+  fig, ax = plt.subplots(nrows=len(isbinames),sharex=True, sharey=True,)
+
+  for i,name in enumerate(allhistories):
+    history = load_pkl(name)
+    # Shrink current axis by 20%
+    box = ax[i].get_position()
+    ax[i].set_position([box.x0, box.y0, box.width * 0.6, box.height])
+    ax[i].plot(array(history.valimeans)[:,1], label=f"{isbinames[i]}")
+    # ax[i].plot(np.log(history.lossmeans), label=f"{isbinames[i]}")
+    ax[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+  plt.suptitle("snn-f1 Detection metric")
+  plt.tight_layout()
+  plt.show()
+
+  # valis = np.array(history.valimeans)
+
+  # ax[0+1].plot(np.log(valis[:,0]), label="log vali loss")
+  # ax[0+1].legend()
+
+  # ax[1+1].plot(valis[:,1], label="f1")
+  # ax[1+1].legend()
+
+  # ax[2+1].plot(valis[:,2], label="height")
+  # ax[2+1].legend()
 
 def wipedir(path):
   path = Path(path)
