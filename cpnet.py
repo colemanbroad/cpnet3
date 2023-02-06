@@ -461,7 +461,7 @@ def train(PR, dataset=None,continue_training=False):
   ## load weights and sample train/vali assignment from disk?
   if CONTINUE:
     labels = load_pkl(PR.savedir / "train/labels.pkl")
-    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_latest.pt'))
+    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_latest.pt', map_location=torch.device(device)))
     history = load_pkl(PR.savedir / 'train/history.pkl')
   else:
     wipedir(PR.savedir/'train/m')
@@ -763,7 +763,7 @@ def predict(PR):
   ltps = []
   # rawpng_list = []
   for weights in ['loss']: #['latest','loss','f1','height']:
-    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt'))
+    net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt', map_location=torch.device(device)))
 
     for i, dikt in enumerate(PR.preddata):
       # print("\033[F",end='') ## move cursor UP one line 
