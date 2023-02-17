@@ -23,6 +23,29 @@ isbi_scales = {
   "Fluo-C2DL-Huh7" :     (1,1), ## ??
   }
 
+isbi_by_size = [
+  "Fluo-C2DL-Huh7",
+  "DIC-C2DH-HeLa",
+  "PhC-C2DH-U373",
+  "Fluo-N2DH-GOWT1",
+  "Fluo-C2DL-MSC",
+  "Fluo-C3DL-MDA231",
+  "Fluo-N2DH-SIM+",
+  "PhC-C2DL-PSC",
+  "Fluo-N2DL-HeLa",
+  "Fluo-N3DH-CHO",
+  "Fluo-C3DH-A549",
+  "Fluo-C3DH-A549-SIM",
+  "BF-C2DL-MuSC",
+  "BF-C2DL-HSC",
+  "Fluo-N3DH-SIM+",
+  "Fluo-N3DH-CE",
+  "Fluo-C3DH-H157",
+  "Fluo-N3DL-DRO",
+  "Fluo-N3DL-TRIC",
+]
+
+
 isbi_times = {
   "Fluo-C3DH-A549" :     {"01" : (0, 30) ,    "02" : (0, 30)} ,
   "Fluo-C3DH-H157" :     {"01" : (0, 60) ,    "02" : (0, 60)} ,

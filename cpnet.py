@@ -27,9 +27,10 @@ from skimage.feature           import peak_local_max
 from skimage.io                import imsave
 from skimage.measure           import regionprops
 from skimage.morphology.binary import binary_dilation
+from skimage.segmentation      import find_boundaries
 from tifffile                  import imread
 
-from isbidata import isbi_times, isbi_scales
+import isbidata
 
 ## 3rd party 
 # import augmend
@@ -188,7 +189,7 @@ def zoom_pts(pts,scale):
 ## x : image::ndarray
 ## kind : in ['I','L'] for "Intensity" / "Label"
 ## colors : colormap
-def img2png(x, kind, colors=None):
+def img2png(x, kind, colors=None, greynorm=True):
   
   assert kind in ['I','L']
   if 'float' in str(x.dtype): assert kind=='I'
@@ -241,7 +242,8 @@ def img2png(x, kind, colors=None):
   if 'int' in str(x.dtype):
     x = _colorseg(x)
   else:
-    x = norm_minmax01(x)
+    if greynorm:
+      x = norm_minmax01(x)
     x = cmap(x)
   
   x = (x*255).astype(np.uint8)
@@ -289,13 +291,10 @@ def pad_until_divisible(raw, patch_size, divisor, return_pad=False):
 ## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
 
-  # savedir = Path("/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/expr/e23_mauricio/v02/")
-  # savedir = Path("/Users/broaddus/Desktop/work/bioimg-collab/mau-2021/data-experiment/")
-  # savedir = Path("/projects/project-broaddus/devseg_2/expr/e23_mauricio/v03/")
   savedir = Path(f"cpnet-out/{isbiname}/")
   savedir.mkdir(parents=True,exist_ok=True)
-  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  base = f"data-isbi/{isbiname}/"
+  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  # base = f"data-isbi/{isbiname}/"
 
   ####### data, train, predict #######
 
@@ -305,23 +304,28 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR.ndim = 2 if "2D" in isbiname else 3
   PR.name_raw = base + "{dset}/t{time:03d}.tif"
   PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+  tb = isbidata.isbi_times[isbiname] # TimeBounds : dset -> int
+  alldata = np.array([dict(dset=d, time=t)
+                        for d in ['02']
+                        for t in range(tb[d][0], tb[d][1])])
+                        # for t in range(tb[d][0], tb[d][0]+5)])
+
   if isbiname in ['BF-C2DL-HSC', 'BF-C2DL-MuSC']:
     PR.name_raw = PR.name_raw.replace('{time:03d}', '{time:04d}')
     PR.name_pts = PR.name_pts.replace('{time:03d}', '{time:04d}')
-  tb = isbi_times[isbiname] # TimeBounds : dset -> int
-  alldata = np.array([dict(dset=d, time=t) 
+    alldata = np.array([dict(dset=d, time=t)
                         for d in ['02']
-                        for t in range(tb[d][0], tb[d][1])])
+                        for t in range(tb[d][0], tb[d][1], 10)])
+                        # for t in range(tb[d][0], tb[d][0]+5)]) ## downsample by 1/10
+  
   np.random.seed(42)
   np.random.shuffle(alldata)
-  alldata = alldata[:4]
-  N = len(alldata)
-  PR.trainvalidata = alldata[N*7//8:]
-  # PR.preddata = alldata[:N*7//8]
+  # N = len(alldata)
+  PR.trainvalidata = alldata
 
   PR.preddata = np.array([dict(dset=d, time=t)
                         for d in ['01']
-                        for t in range(tb[d][0], tb[d][0]+4)])
+                        for t in range(tb[d][0], tb[d][0]+8)])
 
   # ## cache first image size
   # if (savedir / "data-cache.pkl").is_file():
@@ -333,65 +337,87 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   #   cache.rawsize = rawsize
   #   save_pkl(savedir / "data-cache.pkl", cache)
   
+  ## data, train, predict?
+  PR.sparse = False
+  if isbiname in ["Fluo-N3DL-DRO", "Fluo-N3DL-TRIC", "Fluo-N3DL-TRIF"]:
+    PR.sparse = True
+
   ## predict
   PR.mode = 'NoGT' ## 'withGT'
-  PR.aniso = np.array(isbi_scales[isbiname])
+  PR.aniso = np.array(isbidata.isbi_scales[isbiname])
+  if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
+
+  ## train
+  cmap = np.zeros((256,3),np.float32) #np.random.rand(256,3).clip(min=0.2)
+  cmap[0] = (0,0,0) # background
+  cmap[1] = (0,0,1) # prediction
+  cmap[2] = (0,1,0) # ground truth
+  cmap[3] = (1,0,0) # prediction + ground truth
+  cmap = matplotlib.colors.ListedColormap(cmap)
+  PR.cmap_glance = cmap
 
   if PR.ndim==2:
-
     ## data, predict
     PR.divisor = (8,8)
     PR.outer_shape = (128,128)
-    PR.zoom = (0.25,0.25)
-    
+    ## train
+    PR.sigma = (5,5) 
+    # PR.border = [0,0]
+  if PR.ndim==3:
+    ## data, predict
+    PR.outer_shape = (16,128,128)
+    PR.divisor = (1,8,8)
+    ## train
+    PR.sigma = (3,5,5)
+    # PR.border = [0,0,0]
+
+  isbi_zoom = {
+      "BF-C2DL-HSC" :        0.5,
+      "BF-C2DL-MuSC" :       0.5,
+      "DIC-C2DH-HeLa" :      0.25,
+      "Fluo-C2DL-Huh7" :     0.5,
+      "Fluo-C2DL-MSC" :      0.25,
+      "Fluo-C3DH-A549" :     0.25,
+      "Fluo-C3DH-A549-SIM" : 0.25,
+      "Fluo-C3DH-H157" :     0.25,
+      "Fluo-C3DL-MDA231" :   0.5,
+      "Fluo-N2DH-GOWT1" :    0.25,
+      "Fluo-N2DH-SIM+" :     0.25,
+      "Fluo-N2DL-HeLa" :     0.5,
+      "Fluo-N3DH-CE" :       0.5,     # is min... maybe 0.5 for later times
+      "Fluo-N3DH-CHO" :      0.25,    # is min. masking is really inefficient! we have same patch 2x for each timepoint
+      "Fluo-N3DH-SIM+" :     0.5,     # would be better... cells are stretched in Z. #TODO should we normalize per patch or per image or per dataset?
+      "Fluo-N3DL-DRO" :      1.0,
+      "Fluo-N3DL-TRIC" :     1.0,
+      "PhC-C2DH-U373" :      0.5,
+      "PhC-C2DL-PSC" :       1.0,
+  }
+
+  PR.zoom = isbi_zoom[isbiname]
+  
+  if isbiname in ["PhC-C2DL-PSC"]:
+    PR.sigma = (3,3)
+
+  ## functions that may be shared 
+
+  if PR.ndim==2:
+    ## data, predict
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(16,16), divisor=PR.divisor)
+    PR.splitIntoPatchesPred = PR.splitIntoPatches
     ## train, predict
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1]) ## y_true, y_predicted
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
-
-    ## data
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(16,16), divisor=PR.divisor)
-    PR.sigma = (5,5)
-
-    ## train
-    PR.border = [0,0]
-
   if PR.ndim==3:
-
     ## data, predict
-    PR.outer_shape = (16,128,128)
-    PR.divisor = (1,8,8)
-    PR.zoom = (1, 0.25,0.25)
-    PR.aniso = PR.aniso / PR.aniso[2]
-
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(0,16,16), divisor=PR.divisor)
+    PR.splitIntoPatchesPred = PR.splitIntoPatches
     ## train, predict
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=PR.aniso)
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
-    ## data
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(4,16,16), divisor=PR.divisor)
-    PR.sigma = (3,5,5)
-    ## train
-    PR.border = [0,0,0]
 
-  if isbiname=="Fluo-N3DH-CHO": # shape = (5,111,128)
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=(5, 64, 128), min_border_shape=(0,16,0), divisor=(1,8,8))
-
-  if isbiname=="PhC-C2DL-PSC":
-    PR.zoom = (1,1)
-    PR.sigma = (3,3)
-
-  PR.splitIntoPatchesPred = PR.splitIntoPatches
-  ## ------------------------------------------------
-
-  ## main-01/
-  # PR.outer_shape_train = (128,128)
-  # PR.min_border_shape_train = (16,16)
-
-  ## main-02/
-  # PR.outer_shape_train = (64,64)
-  # PR.min_border_shape_train = (0,0)
-
+  
   return PR
 
 
@@ -410,8 +436,9 @@ def data(PR):
     print("rawshape 3: ", raw.shape)
     # lab = zoom(lab, PR.zoom, order=1)
     pts = zoom_pts(pts, PR.zoom)
-    raw = norm_percentile01(raw,2,99.4)
-    target = createTarget(pts, raw.shape, PR.sigma)
+    ## cast sizes to reduce dataset size 4x
+    raw = norm_percentile01(raw,2,99.4).astype(np.float16)
+    target = createTarget(pts, raw.shape, PR.sigma).astype(np.float16)
     patches = PR.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
@@ -424,22 +451,35 @@ def data(PR):
   data = [f(dikt) for dikt in PR.trainvalidata]
   data = [s for dat in data for s in dat]
 
+  if PR.sparse:
+    N = len(data)
+    anno  = [sample for sample in data if sample.target.max()>0.5]
+    empty = np.array([sample for sample in data if sample.target.max()<0.5])
+    np.random.shuffle(empty)
+    empty = empty[:len(anno)]
+    data = anno + list(empty)
+
   wipedir(PR.savedir/"data/")
   save_pkl(PR.savedir/"data/dataset.pkl", data)
 
   ## save train/vali/test data
   wipedir(PR.savedir/"data/png/")
-  for i,s in enumerate(data[::10]):
-    r = img2png(s.raw, 'I')
-    t = img2png(s.target, 'I', colors=plt.cm.magma)
-    composite = r//2 + t//2 
+  ids = ceil(np.linspace(0,len(data)-1,10)) if len(data)>10 else range(len(data)) ## <= 10 evenly sampled patches
+  for i in ids:
+    s = data[i]
+    r = img2png(s.raw, 'I', greynorm=False)
+    t = find_boundaries(s.target>0.5, mode='inner')
+    # t = t==t.min() ## 1's at target==0.5
+    # ipdb.set_trace()
+    t = img2png(t.astype(np.uint8), 'L', colors=PR.cmap_glance) ## just use any label cmap
+    composite = (r/2.0 + t/2.0).astype(np.uint8).clip(min=0,max=255)
     imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
 
 
 ## NOTE: train() includes additional data filtering.
-def train(PR, dataset=None,continue_training=False):
+def train(PR, continue_training=False):
 
   CONTINUE = continue_training
   print("CONTINUE ? : ", bool(CONTINUE))
@@ -449,10 +489,12 @@ def train(PR, dataset=None,continue_training=False):
     Savedir is {PR.savedir / "train"}
     """)
 
+  dataset = load_pkl(PR.savedir/"data/dataset.pkl")
   dataset = np.array(dataset)
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  print(f"We're using torch device {device} .")
   net = PR.buildUNet()
   net = net.to(device)
   init_weights(net)
@@ -512,7 +554,6 @@ def train(PR, dataset=None,continue_training=False):
       for x in [s.raw, s.target, s.weights]:
         x = x[:, :, ::-1]
 
-
   # if PR.sparse:
   #   # w0 = dgen.weights__decaying_bg_multiplier(s.target,0,thresh=np.exp(-0.5*(3)**2),decayTime=None,bg_weight_multiplier=0.0)
   #   # NOTE: i think this is equivalent to a simple threshold mask @ 3xstddev, i.e.
@@ -530,12 +571,13 @@ def train(PR, dataset=None,continue_training=False):
   # if s.tmax < 0.99 and np.random.rand()<0.99: continue
 
   N_train = len(traindata)
-  N_vali = len(validata)
+  N_vali  = len(validata)
   print(f"""
     Data filtered from N={len(dataset)} to 
     N_train={N_train} , N_vali={N_vali}
     """)
 
+  # ipdb.set_trace()
 
   def mse_loss(s, augment=True, mode=None):
     assert mode in ['train', 'vali', 'glance']
@@ -607,19 +649,35 @@ def train(PR, dataset=None,continue_training=False):
       
       ## filter border points
       patch_shape   = np.array(x.shape)
-      pts2    = [p for p in pts if np.all(p%(patch_shape-PR.border) > PR.border)]
-      gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-PR.border) > PR.border)]
+      # pts2    = [p for p in pts if np.all(p%(patch_shape-PR.border) > PR.border)]
+      # gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-PR.border) > PR.border)]
+      pts2 = pts
+      gt_pts2 = gt_pts
 
       matching = PR.snnMatch(gt_pts2, pts2)
       scores = SN(loss=loss, f1=matching.f1, height=y.max())
       return y, scores
 
     if mode=='glance':
-      r = img2png(x.cpu().numpy(), 'I')
-      p = img2png(y.cpu().numpy(), 'I',colors=plt.cm.magma)
-      w = img2png(w.cpu().numpy(), 'I')
-      t = img2png((yt > 0.9).cpu().numpy().astype(np.uint8), 'L')
-      composite = np.round(r/3 + p/3 + w/3).astype(np.uint8).clip(min=0,max=255)
+      x = x.cpu().numpy()
+      y = y.cpu().numpy()
+      yt = yt.cpu().numpy()
+      w = w.cpu().numpy()
+
+      r = img2png(x, 'I')
+      p = img2png(y, 'I', colors=plt.cm.magma)
+      w = img2png(w, 'I')
+      # t = img2png((yt > 0.9).cpu().numpy().astype(np.uint8), 'L')
+      pts = PR.findPeaks(y)
+      gt_pts = PR.findPeaks(yt.astype(np.float32))
+      t = np.zeros(x.shape,np.uint8)
+      t[tuple(gt_pts.T)] = 1
+      t[tuple(pts.T)] += 2 ## gives 3 on overlap
+      # ipdb.set_trace()
+
+      t = img2png(t, 'L', colors=PR.cmap_glance)
+      composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
+      ## t is sparse. set composite to t only where t has nonzero value
       m = np.any(t[:,:,:3]!=0 , axis=2)
       composite[m] = t[m]
       return composite
@@ -664,19 +722,20 @@ def train(PR, dataset=None,continue_training=False):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       composite = mse_loss(traindata[i], augment=True, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_train/a{time:03d}_{i:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_train/a_{i:04d}_{time:03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
       composite = mse_loss(validata[i], augment=False, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_vali/a{time:03d}_{i:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{time:03d}.png', composite)
 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
   if PR.ndim==2:
-    rate = 1.4 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec]
+    rate = 1.287871 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec] (1.4 was old gpu rate... did i slow down?)
   elif PR.ndim==3:
-    rate = 1.0 if str(device)!='cpu' else 0.0310 # [megapixels / sec]
+    rate = 0.976863 if str(device)!='cpu' else 0.0310 # [megapixels / sec] (1.0 was old gpu rate... did i slow down?)
   N_epochs=300 ## MYPARAM
+
   print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
 
@@ -811,15 +870,18 @@ def predict(PR):
 
 if __name__=="__main__":
   isbiname = sys.argv[1]
-  if isbiname:
-    PR = params(isbiname)
-  else:
-    PR = params()
-  # dataset = data(PR)
-  # train(PR, dataset, continue_training=0)
-  predict(PR)
+  assert isbiname in isbidata.isbi_by_size
+  PR = params(isbiname)
 
-
+  DTP = sys.argv[2]
+  if 'D' in DTP:
+    dataset = data(PR)
+  if 'T0' in DTP:
+    train(PR, continue_training=0)
+  if 'T1' in DTP:
+    train(PR, continue_training=1)
+  if 'P' in DTP:
+    predict(PR)
 
 
 
