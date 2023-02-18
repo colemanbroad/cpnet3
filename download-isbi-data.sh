@@ -14,7 +14,11 @@
 # unzip Fluo-C3DH-A549.zip
 # rm -rf Fluo-C3DH-A549.zip
 
-wget --no-check-certificate http://data.celltrackingchallenge.net/training-datasets/Fluo-C3DL-MDA231.zip 
-unzip Fluo-C3DL-MDA231.zip
-rm -rf Fluo-C3DL-MDA231.zip
-chmod +w Fluo-C3DL-MDA231
+# wget --no-check-certificate http://data.celltrackingchallenge.net/training-datasets/Fluo-C3DL-MDA231.zip 
+# unzip Fluo-C3DL-MDA231.zip
+# rm -rf Fluo-C3DL-MDA231.zip
+# chmod +w Fluo-C3DL-MDA231
+
+wget --no-check-certificate http://data.celltrackingchallenge.net/training-datasets/DIC-C2DH-HeLa.zip
+unzip DIC-C2DH-HeLa.zip
+rm DIC-C2DH-HeLa.zip
