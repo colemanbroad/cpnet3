@@ -1,0 +1,73 @@
+du -hsc ../rawdata/isbi_train/* | sort -h
+
+8.5G  |  BF-C2DL-HSC
+4.3G  |  BF-C2DL-MuSC
+42M   |  DIC-C2DH-HeLa
+41M   |  Fluo-C2DL-Huh7
+82M   |  Fluo-C2DL-MSC
+611M  |  Fluo-C3DH-A549
+771M  |  Fluo-C3DH-A549-SIM
+19G   |  Fluo-C3DH-H157
+200M  |  Fluo-C3DL-MDA231
+70M   |  Fluo-N2DH-GOWT1
+319M  |  Fluo-N2DH-SIM+
+471M  |  Fluo-N2DL-HeLa
+12G   |  Fluo-N3DH-CE
+514M  |  Fluo-N3DH-CHO
+11G   |  Fluo-N3DH-SIM+
+25G   |  Fluo-N3DL-DRO
+51G   |  Fluo-N3DL-TRIC
+48M   |  PhC-C2DH-U373
+356M  |  PhC-C2DL-PSC
+
+132G    total
+
+du -h cpnet-out/*/*/dataset.pkl | sort -h
+0.5 equipotential line is 11px wide for sigma = 5,5
+
+raw  | patches   | name
+41M  | 68M       | Fluo-C2DL-Huh7
+42M  | 85M       | DIC-C2DH-HeLa
+48M  | 116M      | PhC-C2DH-U373
+70M  | 208M      | Fluo-N2DH-GOWT1
+82M  | 73M       | Fluo-C2DL-MSC
+200M | 577M      | Fluo-C3DL-MDA231
+319M | 151M      | Fluo-N2DH-SIM+
+356M | 1.1G      | PhC-C2DL-PSC
+471M | 139M      | Fluo-N2DL-HeLa
+514M | 173M      | Fluo-N3DH-CHO
+611M | 659M      | Fluo-C3DH-A549
+771M | 976M      | Fluo-C3DH-A549-SIM
+4.3G | 3.1G      | BF-C2DL-MuSC
+8.5G | 3.9G      | BF-C2DL-HSC
+11G  | 6.3G      | Fluo-N3DH-SIM+
+12G  | 9.0G      | Fluo-N3DH-CE
+19G  | 9.9G      | Fluo-C3DH-H157
+25G  | 13G (2.5) | Fluo-N3DL-DRO
+51G  | 32G       | Fluo-N3DL-TRIC
+
+0.5 equipotential line is 11px wide for sigma = 5,5
+
+Alphabetical sort  | estimated zoom
+BF-C2DL-HSC	       | 0.5 - 1
+BF-C2DL-MuSC       | 0.5 - 1
+DIC-C2DH-HeLa      | 0.25
+Fluo-C2DL-Huh7     | 0.5
+Fluo-C2DL-MSC      | 0.25 or more? very sparse data
+Fluo-C3DH-A549     | 0.25
+Fluo-C3DH-A549-SIM | 0.25
+Fluo-C3DH-H157     | 0.25 is fine. objects still big and sparse, but we need good texture to avoid FP
+Fluo-C3DL-MDA231   | 0.5 - 1
+Fluo-N2DH-GOWT1    | 0.25 is minimum
+Fluo-N2DH-SIM+     | 0.25 is minimum
+Fluo-N2DL-HeLa     | 0.5 is min #TODO fix bg color
+Fluo-N3DH-CE       | 0.25 is min... maybe 0.5 for later times
+Fluo-N3DH-CHO      | 0.25 is min. masking is really inefficient! we have same patch 2x for each timepoint
+Fluo-N3DH-SIM+     | 0.5 would be better... cells are stretched in Z. #TODO should we normalize per patch or per image or per dataset?
+Fluo-N3DL-DRO      | 1x
+Fluo-N3DL-TRIC     | 1x
+PhC-C2DH-U373      | 0.25 min. 0.5 prob better
+PhC-C2DL-PSC       | 1x zoom with 3x3 sigma
+
+
+

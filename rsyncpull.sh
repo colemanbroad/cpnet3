@@ -7,6 +7,9 @@ cd ~/Desktop/mpi-remote/project-broaddus/
 # ext="rawdata/isbi_challenge_out_extra/trackingvideo/"
 # ext="rawdata/isbi_challenge_out_extra/Fluo-N3DL-TRIF/"
 
+# ext="cpnet3/cpnet-out/Fluo-C2DL-Huh7"
+# ext="cpnet3/cpnet-out/Fluo-N3DL-DRO"
+# ext="cpnet3/cpnet-out/Fluo-C3DH-A549"
 ext="cpnet3/cpnet-out"
 
 # open $ext
@@ -21,8 +24,10 @@ mkdir -p $(dirname $ext)
 ## filters are ordered, i.e.
 ## a file is tested against each filter in turn until match which then determines include/exclude
 
-rsync -r \
+rsync -ri \
+      --delete \
       --exclude "*_/" \
+      --exclude "glance_*/" \
       --include "*/" \
       --include "*/history.pkl" \
       --include "*.png" \

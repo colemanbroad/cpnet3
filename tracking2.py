@@ -11,9 +11,6 @@ def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
 
-
-
-
 ## parent_list to TrueBranching (NetworkX tracking datastructure)
 def _parent_list_to_tb(parents,ltps):
   """
@@ -320,6 +317,12 @@ def compare_trackings(tb_gt,tb,aniso=[1,1],dub=20):
   #   print(f"{k:12s}\t{v:.5f}")
 
   return matches , edges_gt , edges_prop , S
+
+
+
+
+
+
 
 
 

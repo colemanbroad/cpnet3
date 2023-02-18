@@ -8,6 +8,8 @@ import shutil
 from textwrap import dedent
 from itertools import product
 import sys
+import ast
+import csv
 
 ## standard scipy
 import ipdb
@@ -30,7 +32,7 @@ from skimage.morphology.binary import binary_dilation
 from skimage.segmentation      import find_boundaries
 from tifffile                  import imread
 
-import isbidata
+# import isbidata
 
 ## 3rd party 
 # import augmend
@@ -280,21 +282,40 @@ def pad_until_divisible(raw, patch_size, divisor, return_pad=False):
   if return_pad: return raw, padding
   return raw
 
-# def compute_zoom(rawsize,desired_zoom,divisor):
-#   rawsize = array(rawsize)
-#   desired_zoom = array(desired_zoom)
-#   desired_rawsize = rawsize*desired_zoom
-#   desired_rawsize_fixed = ceil(desired_rawsize/divisor)*divisor
-#   zoom_fixed = desired_rawsize_fixed / rawsize
-#   return zoom_fixed
+## don't use pandas `read_csv()` for parsing! use python's `ast.literal_eval()`
+## WARNING: We attempt to interpret all cells in the table as python, and only 
+## fall back to `str` on failure. If we WANT a string, we have to wrap it in extra quotes,
+## or ensure that `literal_eval()` fails.
+def load_isbi_csv(isbiname):
+
+  def parse(x):
+    try: 
+      y = ast.literal_eval(x)
+      if type(y) in [int,float,tuple,list,bool]: x=y
+    except:
+      pass
+    return x
+
+  for row in csv.DictReader(open('isbi-stats.csv','r')):
+    if row['name']==isbiname:
+      return {k:parse(v) for k,v in row.items()}
+
+"""
+Core Functions
+"""
+
+
+
 
 ## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
 
   savedir = Path(f"cpnet-out/{isbiname}/")
   savedir.mkdir(parents=True,exist_ok=True)
-  base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  # base = f"data-isbi/{isbiname}/"
+  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
+  base = f"data-isbi/{isbiname}/"
+
+  isbi = load_isbi_csv(isbiname)
 
   ####### data, train, predict #######
 
@@ -302,49 +323,33 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR.isbiname = isbiname
   PR.savedir = savedir
   PR.ndim = 2 if "2D" in isbiname else 3
-  PR.name_raw = base + "{dset}/t{time:03d}.tif"
-  PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
-  tb = isbidata.isbi_times[isbiname] # TimeBounds : dset -> int
+
+  tname = isbi['tname']
+  if tname==3:
+    PR.name_raw = base + "{dset}/t{time:03d}.tif"
+    PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+  elif tname==4:
+    PR.name_raw = base + "{dset}/t{time:04d}.tif"
+    PR.name_pts = base + "{dset}_GT/TRA/man_track{time:04d}.tif"
+
+  tb02 = isbi['times 02']
+  subsample = isbi['take nth']
   alldata = np.array([dict(dset=d, time=t)
                         for d in ['02']
-                        for t in range(tb[d][0], tb[d][1])])
-                        # for t in range(tb[d][0], tb[d][0]+5)])
-
-  if isbiname in ['BF-C2DL-HSC', 'BF-C2DL-MuSC']:
-    PR.name_raw = PR.name_raw.replace('{time:03d}', '{time:04d}')
-    PR.name_pts = PR.name_pts.replace('{time:03d}', '{time:04d}')
-    alldata = np.array([dict(dset=d, time=t)
-                        for d in ['02']
-                        for t in range(tb[d][0], tb[d][1], 10)])
-                        # for t in range(tb[d][0], tb[d][0]+5)]) ## downsample by 1/10
-  
+                        for t in range(tb02[0], tb02[1], subsample)])
   np.random.seed(42)
   np.random.shuffle(alldata)
-  # N = len(alldata)
   PR.trainvalidata = alldata
 
+  tb01 = isbi['times 01']
   PR.preddata = np.array([dict(dset=d, time=t)
                         for d in ['01']
-                        for t in range(tb[d][0], tb[d][0]+8)])
-
-  # ## cache first image size
-  # if (savedir / "data-cache.pkl").is_file():
-  #   cache = load_pkl(savedir / "data-cache.pkl")
-  #   rawsize = cache.rawsize
-  # else:
-  #   cache = SN()
-  #   rawsize = load_tif(PR.name_raw.format(**alldata[0])).shape
-  #   cache.rawsize = rawsize
-  #   save_pkl(savedir / "data-cache.pkl", cache)
+                        for t in range(tb01[0], tb01[0]+8)])
   
-  ## data, train, predict?
-  PR.sparse = False
-  if isbiname in ["Fluo-N3DL-DRO", "Fluo-N3DL-TRIC", "Fluo-N3DL-TRIF"]:
-    PR.sparse = True
-
   ## predict
   PR.mode = 'NoGT' ## 'withGT'
-  PR.aniso = np.array(isbidata.isbi_scales[isbiname])
+
+  PR.aniso = np.array(isbi['scales'])
   if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
 
   ## train
@@ -356,49 +361,30 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   cmap = matplotlib.colors.ListedColormap(cmap)
   PR.cmap_glance = cmap
 
+  ## DEFAULTS
+
   if PR.ndim==2:
     ## data, predict
     PR.divisor = (8,8)
     PR.outer_shape = (128,128)
     ## train
-    PR.sigma = (5,5) 
+    PR.sigma = (5,5)
     # PR.border = [0,0]
+    PR.zoom = (0.5,0.5)
   if PR.ndim==3:
     ## data, predict
     PR.outer_shape = (16,128,128)
     PR.divisor = (1,8,8)
     ## train
     PR.sigma = (3,5,5)
+    PR.zoom = (1,0.5,0.5)
     # PR.border = [0,0,0]
 
-  isbi_zoom = {
-      "BF-C2DL-HSC" :        0.5,
-      "BF-C2DL-MuSC" :       0.5,
-      "DIC-C2DH-HeLa" :      0.25,
-      "Fluo-C2DL-Huh7" :     0.5,
-      "Fluo-C2DL-MSC" :      0.25,
-      "Fluo-C3DH-A549" :     0.25,
-      "Fluo-C3DH-A549-SIM" : 0.25,
-      "Fluo-C3DH-H157" :     0.25,
-      "Fluo-C3DL-MDA231" :   0.5,
-      "Fluo-N2DH-GOWT1" :    0.25,
-      "Fluo-N2DH-SIM+" :     0.25,
-      "Fluo-N2DL-HeLa" :     0.5,
-      "Fluo-N3DH-CE" :       0.5,     # is min... maybe 0.5 for later times
-      "Fluo-N3DH-CHO" :      0.25,    # is min. masking is really inefficient! we have same patch 2x for each timepoint
-      "Fluo-N3DH-SIM+" :     0.5,     # would be better... cells are stretched in Z. #TODO should we normalize per patch or per image or per dataset?
-      "Fluo-N3DL-DRO" :      1.0,
-      "Fluo-N3DL-TRIC" :     1.0,
-      "PhC-C2DH-U373" :      0.5,
-      "PhC-C2DL-PSC" :       1.0,
-  }
-
-  PR.zoom = isbi_zoom[isbiname]
+  PR.zoom = isbi['zoom']
+  PR.sigma = isbi['sigma']
+  PR.sparse = isbi['sparse']
   
-  if isbiname in ["PhC-C2DL-PSC"]:
-    PR.sigma = (3,3)
-
-  ## functions that may be shared 
+  ## functions shared across data(), train(), and predict()
 
   if PR.ndim==2:
     ## data, predict
@@ -416,7 +402,6 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=PR.aniso)
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
-
   
   return PR
 
@@ -870,16 +855,19 @@ def predict(PR):
 
 if __name__=="__main__":
   isbiname = sys.argv[1]
-  assert isbiname in isbidata.isbi_by_size
+  # assert isbiname in load_isbi_csv(isbiname).index
   PR = params(isbiname)
+
+  isbi = load_isbi_csv('Fluo-C2DL-Huh7')
+  ipdb.set_trace()
 
   DTP = sys.argv[2]
   if 'D' in DTP:
     dataset = data(PR)
-  if 'T0' in DTP:
-    train(PR, continue_training=0)
-  if 'T1' in DTP:
+  if 'Tc' in DTP:
     train(PR, continue_training=1)
+  elif 'T' in DTP:
+    train(PR, continue_training=0)
   if 'P' in DTP:
     predict(PR)
 

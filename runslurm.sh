@@ -1,7 +1,7 @@
 ## Ordered by dataset size
 
-# cpnetargs='DT0P'
-cpnetargs='DT0P'
+# cpnetargs='DTcP'
+cpnetargs='DTP'
 sbatch -J "FC2L_Huh7"   -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"Fluo-C2DL-Huh7".out     -e slurm_out/"Fluo-C2DL-Huh7".err     --wrap "/bin/time -v python cpnet.py Fluo-C2DL-Huh7 $cpnetargs"
 sbatch -J "DC2H_HeLa"   -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"DIC-C2DH-HeLa".out      -e slurm_out/"DIC-C2DH-HeLa".err      --wrap "/bin/time -v python cpnet.py DIC-C2DH-HeLa $cpnetargs"
 sbatch -J "PC2H_U373"   -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"PhC-C2DH-U373".out      -e slurm_out/"PhC-C2DH-U373".err      --wrap "/bin/time -v python cpnet.py PhC-C2DH-U373 $cpnetargs"
@@ -21,29 +21,3 @@ sbatch -J "FN3H_CE"     -p gpu --gres gpu:1 -n 1 -t  24:00:00 -c 1 --mem 128000 
 sbatch -J "FC3H_H157"   -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"Fluo-C3DH-H157".out     -e slurm_out/"Fluo-C3DH-H157".err     --wrap "/bin/time -v python cpnet.py Fluo-C3DH-H157 $cpnetargs"
 sbatch -J "FN3L_DRO"    -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"Fluo-N3DL-DRO".out      -e slurm_out/"Fluo-N3DL-DRO".err      --wrap "/bin/time -v python cpnet.py Fluo-N3DL-DRO $cpnetargs"
 sbatch -J "FN3L_TRIC"   -p gpu --gres gpu:1 -n 1 -t   6:00:00 -c 1 --mem 128000 -o slurm_out/"Fluo-N3DL-TRIC".out     -e slurm_out/"Fluo-N3DL-TRIC".err     --wrap "/bin/time -v python cpnet.py Fluo-N3DL-TRIC $cpnetargs"
-
-# Fluo-N3DL-TRIF
-
-# Actual Runtime (1/16 * 7/8 for training)
-
-# A549        0:04.70
-# A549-SIM    0:04.71
-# C2DH-HeLa   3:29.91
-# CE          3:18:39
-# CHO         10:50.10
-# DRO         -- need to implement SPARSE
-# GOWT1       7:17.23
-# H157        -- too much data. must downscale more.
-# HSC         0:03.98
-# Huh7        0:13.04
-# MDA231      3:18:39
-# MSC         4:58.38
-# MuSC        0:04.19
-# N2DH-SIM+   3:34.45
-# N2DL-HeLa   5:12.21
-# N3DH-SIM+   0:07.62
-# PSC         3:41.34
-# TRIC        0:09.34
-# U373        3:42.05
-
-# TRIF        -- no data yet

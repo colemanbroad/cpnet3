@@ -1,5 +1,5 @@
 
-# mkdir -p movies
+mkdir movies
 
 for alldirs in /Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*; do
 	isbiname=$(basename $alldirs)
