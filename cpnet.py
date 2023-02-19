@@ -454,11 +454,10 @@ def data(PR):
   for i in ids:
     s = data[i]
     r = img2png(s.raw, 'I', greynorm=False)
-    t = find_boundaries(s.target>0.5, mode='inner')
-    # t = t==t.min() ## 1's at target==0.5
-    # ipdb.set_trace()
-    t = img2png(t.astype(np.uint8), 'L', colors=PR.cmap_glance) ## just use any label cmap
-    composite = (r/2.0 + t/2.0).astype(np.uint8).clip(min=0,max=255)
+    mask = find_boundaries(s.target>0.5, mode='inner')
+    t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## just use any label cmap
+    composite = r.copy()
+    composite[mask] = (r[mask]/2.0 + t[mask]/2.0).astype(np.uint8).clip(min=0,max=255)
     imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
