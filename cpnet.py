@@ -142,6 +142,13 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
   inner_counts = ceil(img_shape / desired_inner_shape)
   inner_shape_float = img_shape / inner_counts
 
+  ## "Recomputed Outer Shape"
+  ros = ceil(inner_shape_float) + min_border_shape
+  ros = ceil(ros/divisor) * divisor
+
+  ## this function runs per-dimension n
+  ## i : ith patch along dimension 
+  ## n : dimension index i.e. one of 0,1[,2]
   def f(i,n):
     a = inner_shape_float[n]
     b = floor(a*i)      # slice start
@@ -152,14 +159,14 @@ def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24),
 
     # shift `outer` patch inwards when we hit a border to maintain outer_shape.
     if b==0:                          # left border
-      outer = slice(0,outer_shape[n])
+      outer = slice(0,ros[n])
       inner_rel = slice(0,w)
     elif c==img_shape[n]:             # right border 
-      outer = slice(img_shape[n]-outer_shape[n],img_shape[n])
-      inner_rel = slice(outer_shape[n]-w,outer_shape[n])
+      outer = slice(img_shape[n]-ros[n],img_shape[n])
+      inner_rel = slice(ros[n]-w,ros[n])
     else:
       r = b - min_border_shape[n]
-      outer = slice(r,r+outer_shape[n])
+      outer = slice(r,r+ros[n])
       inner_rel = slice(min_border_shape[n],min_border_shape[n]+w)
     return SN(inner=inner, outer=outer, inner_rel=inner_rel)
 
