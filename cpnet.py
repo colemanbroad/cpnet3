@@ -411,8 +411,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 def data(PR):
 
   def f(dikt):
-    raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])
-    lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
+    raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32) ## cast from isbi data in u8 or u16  #.transpose([1,0,2,3])
+    lab = load_tif(PR.name_pts.format(**dikt))
     pts = np.array([x['centroid'] for x in regionprops(lab)])
     print("rawshape 1: ", raw.shape)
     raw = zoom(raw, PR.zoom, order=1)
