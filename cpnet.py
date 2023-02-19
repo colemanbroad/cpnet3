@@ -665,24 +665,26 @@ def train(PR, continue_training=False):
       if np.nanmin(valis[:,i])==valis[-1,i]:
         torch.save(net.state_dict(), PR.savedir / f'train/m/best_weights_{k}.pt')
 
-  def predGlances(time):
+  def predGlances(epoch):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       composite = mse_loss(traindata[i], augment=True, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_train/a_{i:04d}_{time:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_train/a_{i:04d}_{epoch.clip(max=10):03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
       composite = mse_loss(validata[i], augment=False, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{time:03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{epoch.clip(max=10):03d}.png', composite)
 
+
+  ## Estimate the total time required for training 
   n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
   if PR.ndim==2:
     rate = 1.287871 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec] (1.4 was old gpu rate... did i slow down?)
   elif PR.ndim==3:
     rate = 0.976863 if str(device)!='cpu' else 0.0310 # [megapixels / sec] (1.0 was old gpu rate... did i slow down?)
-  N_epochs=300 ## MYPARAM
 
+  N_epochs=300
   print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
   print(f"\nBegin training for {N_epochs} epochs...\n\n")
 
@@ -691,11 +693,11 @@ def train(PR, continue_training=False):
     trainOneEpoch()
     validateOneEpoch()
     save_pkl(PR.savedir / "train/history.pkl", history)
-    if ep in range(10) or ep%10==0: predGlances(ep)
+    if ep in range(0,10,2) or ep%10==0: predGlances(ep)
     dt  = time() - tic
 
-    print("\033[F",end='') ## move cursor UP one line 
-    print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={n_pix/dt:5f} Mpix/s", end='\n',flush=True)
+    # print("\033[F",end='') ## move cursor UP one line 
+    print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={n_pix/dt:5f} Mpix/s", end='\r',flush=True)
 
 
 ## Make predictions for each saved weight set : 'latest','loss','f1','height'
