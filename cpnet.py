@@ -750,12 +750,10 @@ def predict(PR):
 
     def f():
       r = img2png(raw, 'I')
-      p = img2png(labelComponents(pred>0.5)[0], 'L') #, colors=plt.cm.magma)
-      composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
-      # ipdb.set_trace()
-      # t = img2png((yt > 0.9).numpy().astype(np.uint8))
-      # m = np.any(t[:,:,:3]!=0 , axis=2)
-      # composite[m] = t[m]
+      m = pred>0.5
+      p = img2png(labelComponents(m)[0], 'L') #, colors=plt.cm.magma)
+      composite = r.copy()
+      composite[m] = (r[m]/2 + p[m]/2).astype(np.uint8).clip(min=0,max=255)
       return composite
     # composite = f()
 
