@@ -332,19 +332,19 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.name_raw = base + "{dset}/t{time:04d}.tif"
     PR.name_pts = base + "{dset}_GT/TRA/man_track{time:04d}.tif"
 
-  tb02 = isbi['times 02']
+  tb = isbi['times 01']
   subsample = isbi['take nth']
   alldata = np.array([dict(dset=d, time=t)
-                        for d in ['02']
-                        for t in range(tb02[0], tb02[1], subsample)])
+                        for d in ['01']
+                        for t in range(tb[0], tb[1], subsample)])
   np.random.seed(42)
   np.random.shuffle(alldata)
   PR.trainvalidata = alldata
 
-  tb01 = isbi['times 01']
+  tb = isbi['times 02']
   PR.preddata = np.array([dict(dset=d, time=t)
-                        for d in ['01']
-                        for t in range(tb01[0], tb01[0]+8)])
+                        for d in ['02']
+                        for t in range(tb[0], tb[0]+8)])
   
   ## predict
   PR.mode = 'NoGT' ## 'withGT'
@@ -368,16 +368,16 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.divisor = (8,8)
     PR.outer_shape = (128,128)
     ## train
-    PR.sigma = (5,5)
+    # PR.sigma = (5,5)
     # PR.border = [0,0]
-    PR.zoom = (0.5,0.5)
+    # PR.zoom = (0.5,0.5)
   if PR.ndim==3:
     ## data, predict
     PR.outer_shape = (16,128,128)
     PR.divisor = (1,8,8)
     ## train
-    PR.sigma = (3,5,5)
-    PR.zoom = (1,0.5,0.5)
+    # PR.sigma = (3,5,5)
+    # PR.zoom = (1,0.5,0.5)
     # PR.border = [0,0,0]
 
   PR.zoom = isbi['zoom']
@@ -537,26 +537,15 @@ def train(PR, continue_training=False):
       for x in [s.raw, s.target, s.weights]:
         x = x[:, ::-1]
 
-    # flip z
+    # flip [x] if dim==3
     if np.random.rand() < 0.5 and PR.ndim==3:
       for x in [s.raw, s.target, s.weights]:
         x = x[:, :, ::-1]
 
-  # if PR.sparse:
-  #   # w0 = dgen.weights__decaying_bg_multiplier(s.target,0,thresh=np.exp(-0.5*(3)**2),decayTime=None,bg_weight_multiplier=0.0)
-  #   # NOTE: i think this is equivalent to a simple threshold mask @ 3xstddev, i.e.
-  #   w0 = (s.target > np.exp(-0.5*(3**2))).astype(np.float32)
-  # else:
-  #   w0 = np.ones(s.target.shape,dtype=np.float32)
-  # return w0
-  # df['weights'] = df.apply(addweights,axis=1)
 
-  ## Filter dataset
-  # traindata = df[(df.labels==0) & (df.npts>0)] ## MYPARAM subsample traindata ?
-  # tmax = np.array([s.tmax for s in PR.samples])
-  traindata = dataset[labels==0] # & (tmax > 0.99)]
-  validata  = dataset[labels==1] # & (tmax > 0.99)]
-  # if s.tmax < 0.99 and np.random.rand()<0.99: continue
+  ## Split train/vali
+  traindata = dataset[labels==0] # & (tmax > 0.99) 
+  validata  = dataset[labels==1] # & (tmax > 0.99) 
 
   N_train = len(traindata)
   N_vali  = len(validata)
@@ -565,8 +554,6 @@ def train(PR, continue_training=False):
     N_train={N_train} , N_vali={N_vali}
     """)
 
-  # ipdb.set_trace()
-
   def mse_loss(s, augment=True, mode=None):
     assert mode in ['train', 'vali', 'glance']
 
@@ -574,34 +561,7 @@ def train(PR, continue_training=False):
     yt = s.target.copy()
     w  = s.weights.copy()
 
-    ## remove the border regions that make our patches a bad size
-    if False:
-      divis = (1,8,8)
-      ss = [[None,None,None],[None,None,None],[None,None,None],]
-      for n in [0,1,2]:
-        rem = x.shape[n]%divis[n]
-        if rem != 0:
-          ss[n][0] = 0
-          ss[n][1] = -rem
-      ss = tuple([slice(a,b,c) for a,b,c in ss])
-
-    ## makes patches divisible by (1,8,8) (simpler than above)
-    if False:
-      ps = np.floor(np.array(x.shape)/(1,8,8)) * (1,8,8)
-      ss = tuple([slice(0,n) for n in ps])
-      for arr in [x,yt,w]: arr = arr[ss] # does this work?
-
-    ## augmentation
     if augment: augmentSample(s)
-
-    # ## glance at patches after augmentation
-    # r = img2png(x)
-    # p = img2png(yt,colors=plt.cm.magma)
-    # # t = img2png(w,colors=plt.cm.magma)
-    # composite = np.round(r/2 + p/2).astype(np.uint8).clip(min=0,max=255)
-    # # m = np.any(t[:,:,:3]!=0 , axis=2)
-    # # composite[m] = t[m]
-    # save(composite,PR.savedir/f'train/glance_augmented/a{s.time:03d}_{i:03d}.png')
 
     x  = torch.from_numpy(x.copy() ).float().to(device, non_blocking=True)
     yt = torch.from_numpy(yt.copy()).float().to(device, non_blocking=True)
@@ -635,14 +595,7 @@ def train(PR, continue_training=False):
       pts = PR.findPeaks(y)
       gt_pts = PR.findPeaks(yt.detach().cpu().numpy().astype(np.float32))
       
-      ## filter border points
-      patch_shape   = np.array(x.shape)
-      # pts2    = [p for p in pts if np.all(p%(patch_shape-PR.border) > PR.border)]
-      # gt_pts2 = [p for p in gt_pts if np.all(p%(patch_shape-PR.border) > PR.border)]
-      pts2 = pts
-      gt_pts2 = gt_pts
-
-      matching = PR.snnMatch(gt_pts2, pts2)
+      matching = PR.snnMatch(gt_pts, pts)
       scores = SN(loss=loss, f1=matching.f1, height=y.max())
       return y, scores
 
@@ -776,11 +729,6 @@ def predict(PR):
     height = pred.max()    
     pts = PR.findPeaks(pred)
     pts = zoom_pts(pts , 1 / np.array(PR.zoom))
-
-    # ## filter border points
-    # pred_shape   = np.array(pred.shape)
-    # pts2    = [p for p in pts if np.all(p%(pred_shape-PR.border) > PR.border)]
-    # gt_pts2 = [p for p in gt_pts if np.all(p%(pred_shape-PR.border) > PR.border)]
     
     if PR.mode=='withGT':
       matching = PR.snnMatch(gtpts, pts)
@@ -808,17 +756,13 @@ def predict(PR):
   N_imgs = len(PR.preddata)
 
   ltps = []
-  # rawpng_list = []
-  for weights in ['loss']: #['latest','loss','f1','height']:
+  for weights in ['f1']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt', map_location=torch.device(device)))
 
     for i, dikt in enumerate(PR.preddata):
-      # print("\033[F",end='') ## move cursor UP one line 
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
-
       d = predsingle(dikt)
       ltps.append(d.pts)
-      # rawpng_list.append(d.rawpng)
       # save_png(PR.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
 
   print(f"Run tracking...", end='\n', flush=True)
@@ -832,20 +776,15 @@ def predict(PR):
   # plt.show()
   # input()
 
+  ## random colormap for tracking
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
   cmap = matplotlib.colors.ListedColormap(cmap)
 
   wipedir(PR.savedir/"track/png")
-  # wipedir(PR.savedir/"track/tif")
-  # for time, lab in enumerate():
   for i, dikt in enumerate(PR.preddata):
-
-    # print("\033[F",end='') ## move cursor UP one line 
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
-
     rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32), 'I')
-    # ipdb.set_trace()
     # lab = tracking2.make_ISBI_label_img(tb,i,rawshape,halfwidth=6)
     lab = tracking2.createTarget(tb, i, rawshape, PR.sigma) ## WARNING: Using index `i` instead of dikt['time']
     labpng = img2png(lab, 'L', colors=cmap)
@@ -857,14 +796,12 @@ def predict(PR):
 
 
 if __name__=="__main__":
+
   isbiname = sys.argv[1]
-  # assert isbiname in load_isbi_csv(isbiname).index
   PR = params(isbiname)
 
-  isbi = load_isbi_csv('Fluo-C2DL-Huh7')
-  ipdb.set_trace()
-
   DTP = sys.argv[2]
+
   if 'D' in DTP:
     dataset = data(PR)
   if 'Tc' in DTP:
