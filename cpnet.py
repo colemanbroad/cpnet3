@@ -437,12 +437,13 @@ def data(PR):
   data = [s for dat in data for s in dat]
 
   if PR.sparse:
-    N = len(data)
-    anno  = [sample for sample in data if sample.target.max()>0.5]
-    empty = np.array([sample for sample in data if sample.target.max()<0.5])
-    np.random.shuffle(empty)
-    empty = empty[:len(anno)]
-    data = anno + list(empty)
+    data = [sample for sample in data if sample.target.max()>0.5]
+    # empty = np.array([sample for sample in data if sample.target.max()<0.5])
+    # np.random.shuffle(empty)
+    # empty = empty[:len(anno)]
+    # data = anno + list(empty)
+
+  # ipdb.set_trace()
 
   wipedir(PR.savedir/"data/")
   save_pkl(PR.savedir/"data/dataset.pkl", data)
@@ -510,6 +511,8 @@ def train(PR, continue_training=False):
   for s in dataset:
     s.weights = np.zeros(s.target.shape)
     s.weights[s.inner_rel] = 1
+    if PR.sparse:
+      s.weights = (s.target > np.exp(-0.5*(3**2))).astype(np.float32)
 
     # s.weights = binary_dilation(s.target>0 , np.ones((1,7,7)))
     # s.weights = (s.target > 0)
