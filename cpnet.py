@@ -10,6 +10,7 @@ from itertools import product
 import sys
 import ast
 import csv
+import os
 
 ## standard scipy
 import ipdb
@@ -311,16 +312,14 @@ def load_isbi_csv(isbiname):
 Core Functions
 """
 
-
-
+import localinfo
 
 ## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
 
   savedir = Path(f"cpnet-out/{isbiname}/")
   savedir.mkdir(parents=True,exist_ok=True)
-  # base = f"/projects/project-broaddus/rawdata/isbi_train/{isbiname}/"
-  base = f"data-isbi/{isbiname}/"
+  base = os.path.join(localinfo.local_base, isbiname)
 
   isbi = load_isbi_csv(isbiname)
 
@@ -333,11 +332,11 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 
   tname = isbi['tname']
   if tname==3:
-    PR.name_raw = base + "{dset}/t{time:03d}.tif"
-    PR.name_pts = base + "{dset}_GT/TRA/man_track{time:03d}.tif"
+    PR.name_raw = os.path.join(base, "{dset}/t{time:03d}.tif")
+    PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:03d}.tif")
   elif tname==4:
-    PR.name_raw = base + "{dset}/t{time:04d}.tif"
-    PR.name_pts = base + "{dset}_GT/TRA/man_track{time:04d}.tif"
+    PR.name_raw = os.path.join(base, "{dset}/t{time:04d}.tif")
+    PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
 
   tb = isbi['times 01']
   subsample = isbi['take nth']
@@ -669,12 +668,12 @@ def train(PR, continue_training=False):
     ids = [0,N_train//2,N_train-1]
     for i in ids:
       composite = mse_loss(traindata[i], augment=True, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_train/a_{i:04d}_{epoch.clip(max=10):03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_train/a_{i:04d}_{min(epoch,10):03d}.png', composite)
 
     ids = [0,N_vali//2,N_vali-1]
     for i in ids:
       composite = mse_loss(validata[i], augment=False, mode='glance')
-      save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{epoch.clip(max=10):03d}.png', composite)
+      save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{min(epoch,10):03d}.png', composite)
 
 
   ## Estimate the total time required for training 
