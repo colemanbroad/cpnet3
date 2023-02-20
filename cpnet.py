@@ -339,21 +339,20 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
 
   tb = isbi['times 01']
-  subsample = isbi['take nth']
   alldata = np.array([dict(dset=d, time=t)
                         for d in ['01']
-                        for t in range(tb[0], tb[1], subsample)])
+                        for t in range(tb[0], tb[1], isbi['take nth'])])
   np.random.seed(42)
   np.random.shuffle(alldata)
   PR.trainvalidata = alldata
 
   tb = isbi['times 02']
   PR.preddata = np.array([dict(dset=d, time=t)
-                        for d in ['02']
+                        for d in ['01','02']
                         for t in range(tb[0], tb[0]+8)])
   
   ## predict
-  PR.mode = 'NoGT' ## 'withGT'
+  PR.mode = 'withGT' #'NoGT' ## 'withGT'
 
   PR.aniso = np.array(isbi['scales'])
   if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
@@ -402,7 +401,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
   if PR.ndim==3:
     ## data, predict
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(0,16,16), divisor=PR.divisor)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(4,32,32), divisor=PR.divisor)
     PR.splitIntoPatchesPred = PR.splitIntoPatches
     ## train, predict
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=PR.aniso)
@@ -417,7 +416,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 def data(PR):
 
   def f(dikt):
-    raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32) ## cast from isbi data in u8 or u16  #.transpose([1,0,2,3])
+    raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32) ## cast from isbi data in u8 or u16
     lab = load_tif(PR.name_pts.format(**dikt))
     pts = np.array([x['centroid'] for x in regionprops(lab)])
     print("rawshape 1: ", raw.shape)
@@ -463,7 +462,11 @@ def data(PR):
     mask = find_boundaries(s.target>0.5, mode='inner')
     t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## just use any label cmap
     composite = r.copy()
-    composite[mask] = (r[mask]/2.0 + t[mask]/2.0).astype(np.uint8).clip(min=0,max=255)
+    m = np.any(t[:,:,:3]!=0 , axis=2)
+    composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
+    # ipdb.set_trace()
+    # composite = composite.clip(min=0,max=255).astype(np.uint8)
+    # composite[mask] = (r[mask]/2.0 + t[mask]/2.0).astype(np.uint8).clip(min=0,max=255)
     imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
@@ -703,25 +706,18 @@ def train(PR, continue_training=False):
 ## Include avg/min across predictions too! Simple model ensembling.
 def predict(PR):
 
-  wipedir(PR.savedir / "predict")
-
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   net = PR.buildUNet()
   net = net.to(device)
 
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    print("rawshape 1: ", raw.shape)
+    print("rawshape 1: ", raw.shape, type(raw.shape))
     raw = zoom(raw, PR.zoom, order=1)
-    print("rawshape 2: ", raw.shape)
+    print("rawshape 2: ", raw.shape, type(raw.shape))
     raw, padding = pad_until_divisible(raw, PR.outer_shape, PR.divisor, return_pad=True)
-    print("rawshape 3: ", raw.shape)
+    print("rawshape 3: ", raw.shape, type(raw.shape))
     raw = norm_percentile01(raw,2,99.4)
-
-    if PR.mode=='withGT':
-      lab = load_tif(PR.name_pts.format(**dikt)) #.transpose([])
-      pts = np.array([x['centroid'] for x in regionprops(lab)])
-      gtpts = zoom_pts(np.array(gtpts) , PR.zoom) #.astype(np.int)
 
     ## seamless prediction tiling
     pred = np.zeros(raw.shape)
@@ -738,14 +734,9 @@ def predict(PR):
     pts = zoom_pts(pts , 1 / np.array(PR.zoom))
     
     if PR.mode=='withGT':
+      lab = load_tif(PR.name_pts.format(**dikt))
+      gtpts = np.array([x['centroid'] for x in regionprops(lab)])
       matching = PR.snnMatch(gtpts, pts)
-      print(dedent(f"""
-          weights : {weights}
-             time : {time:03d}
-               f1 : {matching.f1:.3f}
-        precision : {matching.precision:.3f}
-           recall : {matching.recall:.3f}
-        """))
 
     def f():
       r = img2png(raw, 'I')
@@ -758,9 +749,14 @@ def predict(PR):
 
     return SN(**locals())
 
+  # wipedir(PR.savedir / "predict")
+  wipedir(PR.savedir / "predict/scores")
+  wipedir(PR.savedir / "predict/pred")
   N_imgs = len(PR.preddata)
-
   ltps = []
+  matching_results = []
+  badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']
+
   for weights in ['f1']: #['latest','loss','f1','height']:
     net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt', map_location=torch.device(device)))
 
@@ -768,7 +764,23 @@ def predict(PR):
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
       d = predsingle(dikt)
       ltps.append(d.pts)
-      # save_png(PR.savedir/"predict/t{time:04d}-{weights}.png".format(**dikt,weights=weights), d.composite)
+      save_png(PR.savedir/"predict/pred/t-{dset}-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
+      
+      if PR.mode=='withGT':
+        print(dedent(f"""
+          weights : {weights}
+             time : {dikt['time']:d}
+               f1 : {d.matching.f1:.3f}
+        precision : {d.matching.precision:.3f}
+           recall : {d.matching.recall:.3f}
+        """))
+        res = {**dikt, 'weights':weights, **{k:v for k,v in d.matching.__dict__.items() if k not in badkeys}}
+        matching_results.append(res)
+
+  if PR.mode=='withGT':
+    save_pkl(PR.savedir/"predict/scores/matching.pkl", matching_results)
+
+  sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
   rawshape = load_tif(PR.name_raw.format(**PR.preddata[0])).shape
@@ -790,14 +802,19 @@ def predict(PR):
   for i, dikt in enumerate(PR.preddata):
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
     rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32), 'I')
+    print("done making rawpng")
     # lab = tracking2.make_ISBI_label_img(tb,i,rawshape,halfwidth=6)
     lab = tracking2.createTarget(tb, i, rawshape, PR.sigma) ## WARNING: Using index `i` instead of dikt['time']
+    print("done making lab")
     labpng = img2png(lab, 'L', colors=cmap)
+    print("done making labpng")
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
+    print("done making composite")
     # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
     # save_png(PR.savedir/"track/c{time:03d}.png".format(**dikt), composite)
     # save_png(PR.savedir/"track/r{time:03d}.png".format(**dikt), rawpng)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
+    print("done making save_png")
 
 
 if __name__=="__main__":
