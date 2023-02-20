@@ -43,6 +43,8 @@ from torch_models import Unet3, init_weights, nn
 from pointmatch import snnMatch
 import tracking2
 
+import localinfo
+
 """
 RUN ME ON SLURM!!
 sbatch -J e23-mau -p gpu --gres gpu:1 -n 1 -t  6:00:00 -c 1 --mem 128000 -o slurm_out/e23-mau.out -e slurm_err/e23-mau.out --wrap '/bin/time -v python e23_mauricio2.py'
@@ -70,11 +72,11 @@ UTILITIES
 """
 
 def createTarget(pts, target_shape, sigmas):
-  s  = np.array(sigmas)
+  s  = array(sigmas)
   ks = floor(7*s).astype(int)   ## extend support to 7/2 sigma in every direc
   ks = ks - ks%2 + 1            ## enfore ODD shape so kernel is centered! 
 
-  pts = np.array(pts).astype(int)
+  pts = array(pts).astype(int)
 
   ## create a single Gaussian kernel array
   def f(x):
@@ -196,6 +198,29 @@ def zoom_pts(pts,scale):
   pts = np.round(pts).astype(np.uint32) ## binning
   return pts
 
+## guarantees that result is divisible by PR.divisor in every dimension for any size
+## return padding value for prediction so it can be removed
+def zoom_img_and_pad_dims(raw,zoomtuple,divisor):
+    raw = zoom(raw, zoomtuple, order=1)
+    rs = array(raw.shape)
+    desired_rawsize = ceil(rs/divisor)*divisor
+    # padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0) ## PAD ONLY SMALL DIMS
+    padding = desired_rawsize - rs ## PAD ALL DIMS
+    raw = np.pad(raw, [(0,p) for p in padding], constant_values=0) ## WARN: must be the same const value that's used by torch model
+    assert all(array(raw.shape) % divisor == 0)
+    return raw, padding
+
+## guarantees that result is divisible by PR.divisor
+## return exact zoom value so detections can be re-scaled properly
+def zoom_img_make_divisible(raw,zoomtuple,divisor):
+  z = zoomtuple
+  s = array(raw.shape)
+  z2 = ceil(s*z/8)*8/s
+  print(ceil(s*z), z2)
+  raw = zoom(raw, z2, order=1)
+  assert all(array(raw.shape) % divisor == 0)
+  return raw, z2
+
 ## x : image::ndarray
 ## kind : in ['I','L'] for "Intensity" / "Label"
 ## colors : colormap
@@ -213,7 +238,7 @@ def img2png(x, kind, colors=None, greynorm=True):
     # assert type(colors) is matplotlib.colors.ListedColormap
     cmap = plt.cm.gray
   elif 'int' in str(x.dtype) and type(colors) is list:
-    cmap = np.array([(0,0,0)] + colors*256)[:256]
+    cmap = array([(0,0,0)] + colors*256)[:256]
     cmap = matplotlib.colors.ListedColormap(cmap)
   elif 'int' in str(x.dtype) and type(colors) is matplotlib.colors.ListedColormap:
     cmap = colors
@@ -279,17 +304,6 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
-## ONLY pad on the right ends, so `pts` location is still valid.
-def pad_until_divisible(raw, patch_size, divisor, return_pad=False):
-  rawsize = array(raw.shape)
-  patch_size = array(patch_size)
-  divisor = array(divisor)
-  desired_rawsize = ceil(rawsize/divisor)*divisor
-  padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0)
-  raw = np.pad(raw, [(0,p) for p in padding], constant_values=0)
-  if return_pad: return raw, padding
-  return raw
-
 ## don't use pandas `read_csv()` for parsing! use python's `ast.literal_eval()`
 ## WARNING: We attempt to interpret all cells in the table as python, and only 
 ## fall back to `str` on failure. If we WANT a string, we have to wrap it in extra quotes,
@@ -308,11 +322,8 @@ def load_isbi_csv(isbiname):
     if row['name']==isbiname:
       return {k:parse(v) for k,v in row.items()}
 
-"""
-Core Functions
-"""
 
-import localinfo
+### Core Functions
 
 ## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
@@ -339,9 +350,9 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
 
   tb = isbi['times 01']
-  alldata = np.array([dict(dset=d, time=t)
+  alldata = array([dict(dset=d, time=t)
                         for d in ['01']
-                        for t in range(tb[0], tb[1], isbi['take nth'])])
+                        for t in range(tb[0], tb[1], isbi['subsample'])])
   np.random.seed(42)
   np.random.shuffle(alldata)
   PR.trainvalidata = alldata
@@ -354,7 +365,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   ## predict
   PR.mode = 'withGT' #'NoGT' ## 'withGT'
 
-  PR.aniso = np.array(isbi['scales'])
+  PR.aniso = array(isbi['scales'])
   if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
 
   ## train
@@ -371,7 +382,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   if PR.ndim==2:
     ## data, predict
     PR.divisor = (8,8)
-    PR.outer_shape = (128,128)
+    PR.outer_shape = (256,256)
     ## train
     # PR.sigma = (5,5)
     # PR.border = [0,0]
@@ -393,7 +404,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 
   if PR.ndim==2:
     ## data, predict
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(16,16), divisor=PR.divisor)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(32,32), divisor=PR.divisor)
     PR.splitIntoPatchesPred = PR.splitIntoPatches
     ## train, predict
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
@@ -418,15 +429,13 @@ def data(PR):
   def f(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32) ## cast from isbi data in u8 or u16
     lab = load_tif(PR.name_pts.format(**dikt))
-    pts = np.array([x['centroid'] for x in regionprops(lab)])
-    print("rawshape 1: ", raw.shape)
-    raw = zoom(raw, PR.zoom, order=1)
-    print("rawshape 2: ", raw.shape)
-    raw = pad_until_divisible(raw, PR.outer_shape, PR.divisor)
-    print("rawshape 3: ", raw.shape)
-    # lab = zoom(lab, PR.zoom, order=1)
+    pts = array([x['centroid'] for x in regionprops(lab)])
+
+    raw, pad = zoom_img_and_pad_dims(raw, PR.zoom, PR.divisor)
+    ## padding always on right side so it doesn't shift pts coordinates.
     pts = zoom_pts(pts, PR.zoom)
-    ## cast sizes to reduce dataset size 4x
+
+    ## cast sizes to reduce dataset size
     raw = norm_percentile01(raw,2,99.4).astype(np.float16)
     target = createTarget(pts, raw.shape, PR.sigma).astype(np.float16)
     patches = PR.splitIntoPatches(raw.shape)
@@ -443,7 +452,7 @@ def data(PR):
 
   if PR.sparse:
     data = [sample for sample in data if sample.target.max()>0.5]
-    # empty = np.array([sample for sample in data if sample.target.max()<0.5])
+    # empty = array([sample for sample in data if sample.target.max()<0.5])
     # np.random.shuffle(empty)
     # empty = empty[:len(anno)]
     # data = anno + list(empty)
@@ -464,10 +473,7 @@ def data(PR):
     composite = r.copy()
     m = np.any(t[:,:,:3]!=0 , axis=2)
     composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
-    # ipdb.set_trace()
-    # composite = composite.clip(min=0,max=255).astype(np.uint8)
-    # composite[mask] = (r[mask]/2.0 + t[mask]/2.0).astype(np.uint8).clip(min=0,max=255)
-    imsave(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
+    save_png(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
   return data
 
@@ -484,7 +490,7 @@ def train(PR, continue_training=False):
     """)
 
   dataset = load_pkl(PR.savedir/"data/dataset.pkl")
-  dataset = np.array(dataset)
+  dataset = array(dataset)
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -520,7 +526,7 @@ def train(PR, continue_training=False):
     s.weights = np.zeros(s.target.shape)
     s.weights[s.inner_rel] = 1
     if PR.sparse:
-      s.weights = (s.target > np.exp(-0.5*(3**2))).astype(np.float32)
+      s.weights = (s.target > np.exp(-0.5*(3**2))).astype(np.float32) ## 3 std dev
 
     # s.weights = binary_dilation(s.target>0 , np.ones((1,7,7)))
     # s.weights = (s.target > 0)
@@ -549,6 +555,10 @@ def train(PR, continue_training=False):
     if np.random.rand() < 0.5 and PR.ndim==3:
       for x in [s.raw, s.target, s.weights]:
         x = x[:, :, ::-1]
+
+    ## TODO: random affine transform on raw intensity
+
+    ## TODO: random jitter that leaves shape divisible by (1,8,8)?
 
 
   ## Split train/vali
@@ -661,7 +671,7 @@ def train(PR, continue_training=False):
 
     valikeys   = ['loss','f1','height']
     valiinvert = [1,-1,-1] # minimize, maximize, maximize
-    valis = np.array(history.valimeans).reshape([-1,3])*valiinvert
+    valis = array(history.valimeans).reshape([-1,3])*valiinvert
 
     for i,k in enumerate(valikeys):
       if np.nanmin(valis[:,i])==valis[-1,i]:
@@ -712,11 +722,7 @@ def predict(PR):
 
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    print("rawshape 1: ", raw.shape, type(raw.shape))
-    raw = zoom(raw, PR.zoom, order=1)
-    print("rawshape 2: ", raw.shape, type(raw.shape))
-    raw, padding = pad_until_divisible(raw, PR.outer_shape, PR.divisor, return_pad=True)
-    print("rawshape 3: ", raw.shape, type(raw.shape))
+    raw, padding = zoom_img_and_pad_dims(raw, PR.zoom, PR.divisor)
     raw = norm_percentile01(raw,2,99.4)
 
     ## seamless prediction tiling
@@ -731,7 +737,7 @@ def predict(PR):
     ## find and scale peaks back to orig space
     height = pred.max()    
     pts = PR.findPeaks(pred)
-    pts = zoom_pts(pts , 1 / np.array(PR.zoom))
+    pts = zoom_pts(pts , 1 / array(PR.zoom))
     
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt))

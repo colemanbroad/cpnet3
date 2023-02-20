@@ -10,9 +10,14 @@ from numpy import array, exp, zeros, maximum, indices
 def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
-# import isbidata
+import sys
+import shutil
+import pandas
+
 from pathlib import Path
 
+import seaborn as sns
+sns.set(style='ticks')
 
 isbinames = ["Fluo-C2DL-Huh7" ,
   "DIC-C2DH-HeLa" ,
@@ -35,12 +40,20 @@ isbinames = ["Fluo-C2DL-Huh7" ,
   "Fluo-N3DL-TRIC" ,
   ]
 
+metriclist = ['f1', 'loss', 'height']
 
 def load_pkl(name): 
   with open(name,'rb') as file:
     return pickle.load(file)
 
-## Plot all metrics for single dataset.
+def wipedir(path):
+  path = Path(path)
+  if path.exists(): shutil.rmtree(path)
+  path.mkdir(parents=True, exist_ok=True)
+
+
+
+## timeseries of all validation metrics for single dataset.
 def plotHistory(isbiname):
 
   # PR = params()
@@ -74,9 +87,7 @@ def plotHistory(isbiname):
   plt.savefig(f"plots/history_{isbiname}.pdf")
   plt.close()
 
-metriclist = ['f1', 'loss', 'height']
-
-## Plot single metric across all datasets.
+## timeseries of single metric for all datasets.
 def plotAllHistories(metric = 'f1'):
 
   assert metric in metriclist
@@ -110,7 +121,7 @@ def plotAllHistories(metric = 'f1'):
 
   plt.suptitle(f"{metric} Detection metric")
   plt.gcf().set_size_inches(6.4,9.46)
-  plt.tight_layout()
+  # plt.tight_layout()
   # plt.show()
   plt.savefig(f"plots/allHistories_{metric}.pdf")
   plt.close()
@@ -119,17 +130,48 @@ def plotAllHistories(metric = 'f1'):
   # if inp in ["Y","y"]: 
   #   print(f"Figsize is {plt.gcf().get_size_inches()}")
 
-import sys
-import shutil
+import json
+from tabulate import tabulate
 
-def wipedir(path):
-  path = Path(path)
-  if path.exists(): shutil.rmtree(path)
-  path.mkdir(parents=True, exist_ok=True)
+## scatterplot of f1 scores
+def plotMetrics():
+
+  dirs = r"/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/(?P<isbiname>[^/]+)/predict/scores/matching.pkl"
+  matchings = glob(dirs.replace(r'(?P<isbiname>[^/]+)','*'))
+  alltables = []
+  for m in matchings:
+    isbiname = re.fullmatch(dirs, m).group('isbiname')
+    matching_table = load_pkl(m)
+    for row_dict in matching_table: row_dict['isbi'] = isbiname
+    alltables += matching_table
+    print(isbiname)
+
+  alltables = pandas.DataFrame(alltables)
+  print(alltables)
+  facetgrid = sns.relplot(data=alltables, x='precision',y='recall',hue='dset',col='isbi',col_wrap=6, height=1.5, aspect=1)
+  # df[['POINTS','PRICE','short-name']].apply(lambda row: facetgrid.ax.text(*row),axis=1);
+  plt.gcf().set_size_inches(14.12,  9.1)
+  # plt.show()
+  # input()
+  # ipdb.set_trace()
+  plt.savefig("plots/precision-recall.pdf")
+
+
+badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']
+keys = ['isbi', 'time', 'weights', 'n_matched', 'n_proposed', 'n_gt', 'precision', 'recall', 'f1']
+
+def printdikt(dikt):
+  for k,v in dikt.items():
+    print(k)
+    for k2,v2 in v.__dict__.items():
+      if k2 not in keys: continue
+      print("  ",k2,v2)
 
 if __name__=='__main__':
-  wipedir("plots")
-  for met in metriclist:
-    plotAllHistories(met)
-  for isbi in isbinames:
-    plotHistory(isbi)
+  plotMetrics()
+
+  # # wipedir("plots")
+  # for met in metriclist:
+  #   plotAllHistories(met)
+  # for isbi in isbinames:
+  #   plotHistory(isbi)

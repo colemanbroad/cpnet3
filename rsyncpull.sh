@@ -30,6 +30,7 @@ rsync -ri \
       --exclude "glance_*/" \
       --include "*/" \
       --include "*/history.pkl" \
+      --include "*/matching*.pkl" \
       --include "*.png" \
       --exclude "*" \
   efal:/projects/project-broaddus/$ext/ $ext
