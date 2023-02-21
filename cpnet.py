@@ -19,6 +19,7 @@ import numpy as np
 from numpy import array, exp, zeros, maximum, indices
 def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
+def round(x): return np.round(x).astype(int)
 import torch
 
 import networkx as nx
@@ -97,97 +98,80 @@ def createTarget(pts, target_shape, sigmas):
 
   return target
 
-def splitIntoPatches(img_shape, outer_shape=(256,256), min_border_shape=(24,24), divisor=(8,8)):
+## Build a list of slices that can tile an image into potentially overlapping
+## (outer) patches, but that also contain a NON-overlapping (inner) subregion.
+def splitIntoPatches(img_shape, desired_outer_shape, min_border_shape, divisor):
   """
   Split image into non-overlapping `inner` rectangles that exactly cover
   `img_shape`. Grow these rectangles by `border_shape` to produce overlapping
-  `outer` rectangles to provide context to all `inner` pixels. These borders
-  should be half the receptive field width of our CNN.
+  `outer` rectangles to provide context to all `inner` pixels. We must mask the loss
+  to only the inner region, otherwise we mix train and test data.
 
-  CONSTRAINTS
-  outer_shape % divisor == 0
-  img_shape   >= outer_shape 
-  outer_shape > 2*min_border_shape
-
-  GUARANTEES
-  outer_shape = constant across patches
-  inner_shape <= outer_shape - 2 * min_border_shape
-
-  borders are evenly distributed on all sides, except on image boundaries
-  max(inner_shapes across patches) - min(inner_shapes across patches) <= 1 forall shapes
-  
+  All of inner, outer, and inner_rel are evenly divisible by `divisor`.
   """
-  
-  img_shape = array(img_shape)
+
   divisor = array(divisor)
-  min_border_shape = array(min_border_shape)
 
-  ## This means we'll have one image with almost all the content in the mask, and 2^d - 1 other images with almost no content.
-  ## One alternative is to rescale images to a nice multiple of divisor? Or pad them ? 
-  ## We could rely on this !? Small images are resized 
-  # patchmax = floor(img_shape/divisor)*divisor 
+  assert all(img_shape % divisor == 0)
+  assert all(min_border_shape % divisor == 0)
+  assert all(desired_outer_shape % divisor == 0)
 
-  outer_shape = array(outer_shape).clip(max=img_shape)
-  ## we just enforced this...
-  assert all(img_shape>=outer_shape), f"Error: `outer_shape` doesn't fit. inner: {img_shape}, outer: {outer_shape} ..."
-  ## outer_shape % divisor == 0 (REQUIRED)
-  ## Setting outer_shape.max = img_shape ensures that img_shape % 8 == 0 if img_shape < outer_shape
-  assert all(outer_shape % divisor == 0), f"img_shape ({img_shape}) not divisible by ({divisor})"
+  img_shape_blocks = array(img_shape) // divisor
+  min_border_shape_blocks = array(min_border_shape) // divisor
+  desired_outer_shape_blocks = array(desired_outer_shape) // divisor
 
-  assert all(outer_shape>=2*min_border_shape), f"Error: borders too wide: {outer_shape} < 2*{min_border_shape}"
+  print(f"""
+  img_shape = {img_shape}
+  desired_outer_shape = {desired_outer_shape}
+  min_border_shape = {min_border_shape}
+  divisor = {divisor}
+  img_shape_blocks = {img_shape_blocks}
+  min_border_shape_blocks = {min_border_shape_blocks}
+  desired_outer_shape_blocks = {desired_outer_shape_blocks}
+  """
+  )
 
-
-  # our actual shape will be <= this desired shape. `outer_shape` is fixed,
-  # but the border shape will grow.
-  desired_inner_shape = outer_shape - min_border_shape
-
-  ## round up, shrinking the actual inner_shape
-  inner_counts = ceil(img_shape / desired_inner_shape)
-  inner_shape_float = img_shape / inner_counts
-
-  ## "Recomputed Outer Shape"
-  ros = ceil(inner_shape_float) + min_border_shape
-  ros = ceil(ros/divisor) * divisor
-
-  ## this function runs per-dimension n
-  ## i : ith patch along dimension 
   ## n : dimension index i.e. one of 0,1[,2]
-  def f(i,n):
-    a = inner_shape_float[n]
-    b = floor(a*i)      # slice start
-    c = floor(a*(i+1))  # slice stop
-    inner = slice(b,c)
-    
-    w = c-b
+  def singledim(n):
+    b_img = img_shape_blocks[n]
+    b_outer = desired_outer_shape_blocks[n]
+    b_border = min_border_shape_blocks[n]
 
-    # shift `outer` patch inwards when we hit a border to maintain outer_shape.
-    if b==0:                          # left border
-      outer = slice(0,ros[n])
-      inner_rel = slice(0,w)
-    elif c==img_shape[n]:             # right border 
-      outer = slice(img_shape[n]-ros[n],img_shape[n])
-      inner_rel = slice(ros[n]-w,ros[n])
-    else:
-      r = b - min_border_shape[n]
-      outer = slice(r,r+ros[n])
-      inner_rel = slice(min_border_shape[n],min_border_shape[n]+w)
-    return SN(inner=inner, outer=outer, inner_rel=inner_rel)
+    if b_outer>=b_img:
+      return [SN(inner=slice(0,b_img), outer=slice(0,b_img), inner_rel=slice(0,b_img))]
 
-  ndim = len(inner_counts)
-  slices_lists = [[f(i,n) for i in range(inner_counts[n])] 
-                          for n in range(ndim)]
+    ## otherwise we need to split up the dimension
 
-  def g(s):
+    b_max_inner = b_outer - 2 * b_border
+    assert(b_max_inner > 0)
+    n_patches = ceil(b_img/b_max_inner) ## this should be sufficient
+    # n_patches = max(ceil(b_img/b_max_inner),2)
+    inner_patch_borders = round(np.linspace(0,b_img,n_patches+1))
+    inner_start = inner_patch_borders[:-1]
+    inner_stop  = inner_patch_borders[1:]
+    outer_start = (inner_start - b_border).clip(min=0)
+    outer_stop  = (inner_stop + b_border).clip(max=b_img)
+    slices = [SN(inner=slice(inner_start[i],inner_stop[i]),
+                  outer=slice(outer_start[i],outer_stop[i]),
+                  inner_rel=slice(inner_start[i]-outer_start[i], inner_stop[i]-outer_start[i]),)
+                  for i in range(n_patches)]
+    return slices
+  
+  def transpose(s):
     inner = tuple(x.inner for x in s)
     outer = tuple(x.outer for x in s)
     inner_rel = tuple(x.inner_rel for x in s)
     return SN(inner=inner, outer=outer, inner_rel=inner_rel)
 
-  # equivalent to itertools.product(*slices_lists)
-  # prod = array(np.meshgrid(*slices_lists)).reshape((ndim,-1)).T
+  samples = [transpose(s) for s in product(*[singledim(n) for n in range(len(img_shape))])]
 
-  res = [g(s) for s in product(*slices_lists)]
-  return res
+  for sam in samples:
+    sam.inner     = tuple(slice(s.start*divisor[n], s.stop*divisor[n]) for n,s in enumerate(sam.inner))
+    sam.outer     = tuple(slice(s.start*divisor[n], s.stop*divisor[n]) for n,s in enumerate(sam.outer))
+    sam.inner_rel = tuple(slice(s.start*divisor[n], s.stop*divisor[n]) for n,s in enumerate(sam.inner_rel))
+
+  return samples
+
 
 ## rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
 def zoom_pts(pts,scale):
@@ -198,33 +182,21 @@ def zoom_pts(pts,scale):
   pts = np.round(pts).astype(np.uint32) ## binning
   return pts
 
-## guarantees that result is divisible by PR.divisor in every dimension for any size
-## return padding value for prediction so it can be removed
-def zoom_img_and_pad_dims(raw,zoomtuple,divisor):
-    raw = zoom(raw, zoomtuple, order=1)
-    rs = array(raw.shape)
-    desired_rawsize = ceil(rs/divisor)*divisor
-    # padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0) ## PAD ONLY SMALL DIMS
-    padding = desired_rawsize - rs ## PAD ALL DIMS
-    raw = np.pad(raw, [(0,p) for p in padding], constant_values=0) ## WARN: must be the same const value that's used by torch model
-    assert all(array(raw.shape) % divisor == 0)
-    return raw, padding
-
 ## guarantees that result is divisible by PR.divisor
 ## return exact zoom value so detections can be re-scaled properly
 def zoom_img_make_divisible(raw,zoomtuple,divisor):
   z = zoomtuple
   s = array(raw.shape)
-  z2 = ceil(s*z/8)*8/s
-  print(ceil(s*z), z2)
+  z2 = ceil(s*z/divisor)*divisor/s
   raw = zoom(raw, z2, order=1)
+  print(raw.shape, z2)
   assert all(array(raw.shape) % divisor == 0)
   return raw, z2
 
 ## x : image::ndarray
 ## kind : in ['I','L'] for "Intensity" / "Label"
 ## colors : colormap
-def img2png(x, kind, colors=None, greynorm=True):
+def img2png(x, kind, colors=None, normalize_intensity=True):
   
   assert kind in ['I','L']
   if 'float' in str(x.dtype): assert kind=='I'
@@ -258,6 +230,7 @@ def img2png(x, kind, colors=None, greynorm=True):
   _dtype = x.dtype
   nd = x.ndim
 
+  ## combine XY YZ XZ projections into single image
   if nd==3:
     a,b,c = x.shape
     yx = x.max(0)
@@ -272,20 +245,19 @@ def img2png(x, kind, colors=None, greynorm=True):
 
   assert x.dtype == _dtype
 
-  # ipdb.set_trace()
-
-  if 'int' in str(x.dtype):
+  if kind=='L':
     x = _colorseg(x)
   else:
-    if greynorm:
+    if normalize_intensity:
       x = norm_minmax01(x)
     x = cmap(x)
   
   x = (x*255).astype(np.uint8)
 
+  # white lines separating XY YZ XZ views
   if nd==3:
-    x[b,:] = 255 # white line
-    x[:,c] = 255 # white line
+    x[b,:] = 255
+    x[:,c] = 255
 
   return x
 
@@ -304,10 +276,11 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
-## don't use pandas `read_csv()` for parsing! use python's `ast.literal_eval()`
-## WARNING: We attempt to interpret all cells in the table as python, and only 
-## fall back to `str` on failure. If we WANT a string, we have to wrap it in extra quotes,
-## or ensure that `literal_eval()` fails.
+## Load `isbi-stats.csv` from disk and create a dictionary of params
+## associated with a given `isbiname`
+## WARNING: We attempt to interpret all cells in the table as python, and
+## only fall back to `str` on failure. If we WANT a string, we have to wrap it in
+## extra quotes, or ensure that `literal_eval()` fails.
 def load_isbi_csv(isbiname):
 
   def parse(x):
@@ -334,96 +307,86 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 
   isbi = load_isbi_csv(isbiname)
 
-  ####### data, train, predict #######
-
+  # np.random uses:
+  # - initial assignment of train/vali labels
+  # - shuffle train data every epoch
+  np.random.seed(42)
+  
   PR = SN()
   PR.isbiname = isbiname
   PR.savedir = savedir
   PR.ndim = 2 if "2D" in isbiname else 3
-
-  tname = isbi['tname']
-  if tname==3:
+  
+  if isbi['tname'] == 3:
     PR.name_raw = os.path.join(base, "{dset}/t{time:03d}.tif")
     PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:03d}.tif")
-  elif tname==4:
+  elif isbi['tname'] == 4:
     PR.name_raw = os.path.join(base, "{dset}/t{time:04d}.tif")
     PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
 
-  tb = isbi['times 01']
-  alldata = array([dict(dset=d, time=t)
-                        for d in ['01']
-                        for t in range(tb[0], tb[1], isbi['subsample'])])
-  np.random.seed(42)
-  np.random.shuffle(alldata)
-  PR.trainvalidata = alldata
-
-  tb = isbi['times 02']
-  PR.preddata = np.array([dict(dset=d, time=t)
-                        for d in ['01','02']
-                        for t in range(tb[0], tb[0]+8)])
+  traindata = []
+  testdata = []
+  for d in ['01','02']:
+    tb = isbi['times '+d]
+    alltimes = range(tb[0], tb[1], isbi['subsample'])
+    traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [2,4,6]]
+    testdata  += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [0]]
   
-  ## predict
-  PR.mode = 'withGT' #'NoGT' ## 'withGT'
+  PR.traindata = np.array(traindata)
+  PR.testdata  = np.array(testdata)
 
-  PR.aniso = array(isbi['scales'])
-  if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
+  ## Are we evaluating or just predicting?
+  PR.mode = 'withGT' # evaluate (requires GT)
+  # PR.mode = 'NoGT' # just predict
+  PR.run_tracking = True
 
-  ## train
-  cmap = np.zeros((256,3),np.float32) #np.random.rand(256,3).clip(min=0.2)
+  ## Colormap for "glances" during training. 
+  ## Predicted and GT points are single pixels of chosen color
+  ## overlayed on raw image.
+  cmap = np.zeros((256,3),np.float32)
   cmap[0] = (0,0,0) # background
   cmap[1] = (0,0,1) # prediction
   cmap[2] = (0,1,0) # ground truth
   cmap[3] = (1,0,0) # prediction + ground truth
   cmap = matplotlib.colors.ListedColormap(cmap)
   PR.cmap_glance = cmap
-
-  ## DEFAULTS
-
-  if PR.ndim==2:
-    ## data, predict
-    PR.divisor = (8,8)
-    PR.outer_shape = (256,256)
-    ## train
-    # PR.sigma = (5,5)
-    # PR.border = [0,0]
-    # PR.zoom = (0.5,0.5)
-  if PR.ndim==3:
-    ## data, predict
-    PR.outer_shape = (16,128,128)
-    PR.divisor = (1,8,8)
-    ## train
-    # PR.sigma = (3,5,5)
-    # PR.zoom = (1,0.5,0.5)
-    # PR.border = [0,0,0]
-
-  PR.zoom = isbi['zoom']
+  
   PR.sigma = isbi['sigma']
   PR.sparse = isbi['sparse']
+  PR.aniso = array(isbi['scales'])
+  if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
   
-  ## functions shared across data(), train(), and predict()
+
+  ## Define functions that are shared across at least two of:
+  ## data(), train() or predict().
 
   if PR.ndim==2:
-    ## data, predict
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(32,32), divisor=PR.divisor)
+
+    PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
+    divisor = (8,8)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(256,256), min_border_shape=(48,48), divisor=divisor)
     PR.splitIntoPatchesPred = PR.splitIntoPatches
+    PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
+
     ## train, predict
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
     PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=[1,1]) ## y_true, y_predicted
-    PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
+
   if PR.ndim==3:
-    ## data, predict
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, outer_shape=PR.outer_shape, min_border_shape=(4,32,32), divisor=PR.divisor)
-    PR.splitIntoPatchesPred = PR.splitIntoPatches
-    ## train, predict
-    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=10, scale=PR.aniso)
+
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
+    divisor = (1,8,8)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(16,128,128), min_border_shape=(4,48,48), divisor=divisor)
+    PR.splitIntoPatchesPred = lambda x: splitIntoPatches(x, desired_outer_shape=(32,400,400), min_border_shape=(8,48,48), divisor=divisor)
+    PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
+    
+    ## train, predict
+    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=100, scale=PR.aniso)
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
   
   return PR
 
-
-## Tiling patches with overlapping borders. Requires loss masking.
-## Const outer size % 8 = 0.
+## construct training data
 def data(PR):
 
   def f(dikt):
@@ -431,11 +394,10 @@ def data(PR):
     lab = load_tif(PR.name_pts.format(**dikt))
     pts = array([x['centroid'] for x in regionprops(lab)])
 
-    raw, pad = zoom_img_and_pad_dims(raw, PR.zoom, PR.divisor)
-    ## padding always on right side so it doesn't shift pts coordinates.
-    pts = zoom_pts(pts, PR.zoom)
+    raw, zoom2 = PR.zoom_img(raw)
+    pts = zoom_pts(pts, zoom2)
 
-    ## cast sizes to reduce dataset size
+    ## cast f16 to reduce dataset size
     raw = norm_percentile01(raw,2,99.4).astype(np.float16)
     target = createTarget(pts, raw.shape, PR.sigma).astype(np.float16)
     patches = PR.splitIntoPatches(raw.shape)
@@ -445,31 +407,23 @@ def data(PR):
                   for r,t,p in zip(raw_patches,target_patches,patches)]
     return samples
 
-  # return pickle.load(open(str(PR.savedir / 'data/filtered.pkl'), 'rb'))
-
-  data = [f(dikt) for dikt in PR.trainvalidata]
+  data = [f(dikt) for dikt in PR.traindata]
   data = [s for dat in data for s in dat]
 
   if PR.sparse:
     data = [sample for sample in data if sample.target.max()>0.5]
-    # empty = array([sample for sample in data if sample.target.max()<0.5])
-    # np.random.shuffle(empty)
-    # empty = empty[:len(anno)]
-    # data = anno + list(empty)
-
-  # ipdb.set_trace()
 
   wipedir(PR.savedir/"data/")
   save_pkl(PR.savedir/"data/dataset.pkl", data)
 
-  ## save train/vali/test data
+  ## Save 10 pngs to give an overview of the training data.
   wipedir(PR.savedir/"data/png/")
   ids = ceil(np.linspace(0,len(data)-1,10)) if len(data)>10 else range(len(data)) ## <= 10 evenly sampled patches
   for i in ids:
     s = data[i]
-    r = img2png(s.raw, 'I', greynorm=False)
+    r = img2png(s.raw, 'I', normalize_intensity=False)
     mask = find_boundaries(s.target>0.5, mode='inner')
-    t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## just use any label cmap
+    t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## make borders blue
     composite = r.copy()
     m = np.any(t[:,:,:3]!=0 , axis=2)
     composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
@@ -478,7 +432,8 @@ def data(PR):
   return data
 
 
-## NOTE: train() includes additional data filtering.
+## Train CPNET; Save history of validation metrics and best CPNET weights
+## for each metric.
 def train(PR, continue_training=False):
 
   CONTINUE = continue_training
@@ -500,7 +455,7 @@ def train(PR, continue_training=False):
   init_weights(net)
   opt = torch.optim.Adam(net.parameters(), lr = 1e-4)
 
-  ## load weights and sample train/vali assignment from disk?
+  ## Load weights and labels from disk, or create new labels.
   if CONTINUE:
     labels = load_pkl(PR.savedir / "train/labels.pkl")
     net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_latest.pt', map_location=torch.device(device)))
@@ -510,10 +465,9 @@ def train(PR, continue_training=False):
     wipedir(PR.savedir/"train/glance_output_train/")
     wipedir(PR.savedir/"train/glance_output_vali/")
     N = len(dataset)
-    # a, b = (N*5)//8, (N*7)//8  ## MYPARAM train / vali / test 
-    a = (N*7)//8 ## don't use test patches. test on full images.
+    a = (N*7)//8 ## split data into 7 parts training and 1 part validation
     labels = np.zeros(N,dtype=np.uint8)
-    labels[a:]=1; ## labels[b:]=2 ## 0=train 1=vali 2=test
+    labels[a:] = 1 ## 0=train 1=vali
     np.random.shuffle(labels)
     save_pkl(PR.savedir / "train/labels.pkl", labels)
     history = SN(lossmeans=[], valimeans=[])
@@ -521,18 +475,17 @@ def train(PR, continue_training=False):
   assert len(dataset)>8
   assert len(labels)==len(dataset)
 
-  ## add loss weights to each patch
+  ## Add mask to each sample that removes the patches
+  ## overlapping borders from the loss. For sparse data
+  ## we set the mask to only include pixels within three
+  ## kernel standard deviations of an annotated GT point.
   for s in dataset:
     s.weights = np.zeros(s.target.shape)
     s.weights[s.inner_rel] = 1
     if PR.sparse:
       s.weights = (s.target > np.exp(-0.5*(3**2))).astype(np.float32) ## 3 std dev
 
-    # s.weights = binary_dilation(s.target>0 , np.ones((1,7,7)))
-    # s.weights = (s.target > 0)
-    # print("{:.3f}".format(s.weights.mean()),end="  ")
-
-  ## augmentation by flips and rotations
+  ## Define augmentation for training samples.
   def augmentSample(sample):
     s = sample
     
@@ -559,7 +512,6 @@ def train(PR, continue_training=False):
     ## TODO: random affine transform on raw intensity
 
     ## TODO: random jitter that leaves shape divisible by (1,8,8)?
-
 
   ## Split train/vali
   traindata = dataset[labels==0] # & (tmax > 0.99) 
@@ -591,13 +543,14 @@ def train(PR, continue_training=False):
       with torch.no_grad(): 
         y  = net(x[None,None])[0,0]
 
-    ## only apply loss on non-overlapping component
-    y  = y[s.inner_rel]
-    x  = x[s.inner_rel]
-    yt = yt[s.inner_rel]
-    w  = w[s.inner_rel]
+    # ## Only apply loss on masked region.
+    ### ERROR: THIS IS A BUG.
+    # y  = y[s.inner_rel]
+    # x  = x[s.inner_rel]
+    # yt = yt[s.inner_rel]
+    # w  = w[s.inner_rel]
     
-    loss = torch.abs((w*(y-yt)**2)).mean()
+    loss = torch.abs(((y-yt)**2)*w).mean()
 
     if mode=='train':
       loss.backward()
@@ -658,15 +611,13 @@ def train(PR, continue_training=False):
   def validateOneEpoch():
     _valiscores = []
     idxs = np.arange(N_vali)
-    np.random.shuffle(idxs)
     for i in idxs:
       s = validata[i]
       y, scores = mse_loss(s,augment=False,mode='vali')
       _valiscores.append((scores.loss, scores.f1, scores.height))
-      # if i%10==0: print(f"_scores",_scores, end='\n',flush=True)
 
     history.valimeans.append(np.nanmean(_valiscores,axis=0))
-
+    
     torch.save(net.state_dict(), PR.savedir / f'train/m/best_weights_latest.pt')
 
     valikeys   = ['loss','f1','height']
@@ -689,18 +640,21 @@ def train(PR, continue_training=False):
       save_png(PR.savedir/f'train/glance_output_vali/a_{i:04d}_{min(epoch,10):03d}.png', composite)
 
 
-  ## Estimate the total time required for training 
-  n_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
+  ## Estimate the total time required for training.
+  N_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
   if PR.ndim==2:
     rate = 1.287871 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec] (1.4 was old gpu rate... did i slow down?)
   elif PR.ndim==3:
     rate = 0.976863 if str(device)!='cpu' else 0.0310 # [megapixels / sec] (1.0 was old gpu rate... did i slow down?)
 
-  N_epochs=300
-  print(f"Estimated Time: {n_pix} Mpix / {rate} Mpix/s = {n_pix/rate/60*N_epochs:.2f}m = {300*n_pix/60/60/rate:.2f}h \n")
-  print(f"\nBegin training for {N_epochs} epochs...\n\n")
+  N_completed = len(history.lossmeans)
+  N_epochs = 100
+  N_remaining = N_epochs - N_completed
+  est_time = N_remaining*N_pix/60/60/rate
+  print(f"Estimated Time: {N_remaining} epochs * {N_pix:.2f} Mpix / {rate:.2f} Mpix/s = {est_time:.2f}h \n")
+  print(f"\nBegin training until epoch {N_epochs}...\n\n")
 
-  for ep in range(N_epochs):
+  for ep in range(N_completed, N_epochs):
     tic = time()
     trainOneEpoch()
     validateOneEpoch()
@@ -708,12 +662,11 @@ def train(PR, continue_training=False):
     if ep in range(0,10,2) or ep%10==0: predGlances(ep)
     dt  = time() - tic
 
-    # print("\033[F",end='') ## move cursor UP one line 
-    print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={n_pix/dt:5f} Mpix/s", end='\r',flush=True)
+    print("\033[F",end='') ## move cursor UP one line 
+    print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={N_pix/dt:5f} Mpix/s", end='\n',flush=True)
 
 
-## Make predictions for each saved weight set : 'latest','loss','f1','height'
-## Include avg/min across predictions too! Simple model ensembling.
+## Evaluate models and make predictions on unseen data.
 def predict(PR):
 
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -722,51 +675,53 @@ def predict(PR):
 
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    raw, padding = zoom_img_and_pad_dims(raw, PR.zoom, PR.divisor)
+    raw, zoom2 = PR.zoom_img(raw)
     raw = norm_percentile01(raw,2,99.4)
 
-    ## seamless prediction tiling
+    ## Seamless prediction tiling
     pred = np.zeros(raw.shape)
     for p in PR.splitIntoPatchesPred(pred.shape):
       x = torch.Tensor(raw[p.outer][None,None]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
-    ss = tuple([slice(0,s-p) for s,p in zip(pred.shape, padding)])
-    pred = pred[ss]
 
-    ## find and scale peaks back to orig space
+    ## Find peaks and transform them back to original image size.
     height = pred.max()    
     pts = PR.findPeaks(pred)
-    pts = zoom_pts(pts , 1 / array(PR.zoom))
+    pts = zoom_pts(pts , 1 / array(zoom2))
     
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt))
       gtpts = np.array([x['centroid'] for x in regionprops(lab)])
       matching = PR.snnMatch(gtpts, pts)
 
-    def f():
+    def makePNG():
       r = img2png(raw, 'I')
       m = pred>0.5
       p = img2png(labelComponents(m)[0], 'L') #, colors=plt.cm.magma)
       composite = r.copy()
       composite[m] = (r[m]/2 + p[m]/2).astype(np.uint8).clip(min=0,max=255)
       return composite
-    # composite = f()
+    # composite = makePNG()
 
     return SN(**locals())
 
   # wipedir(PR.savedir / "predict")
   wipedir(PR.savedir / "predict/scores")
   wipedir(PR.savedir / "predict/pred")
-  N_imgs = len(PR.preddata)
+  N_imgs = len(PR.testdata)
   ltps = []
   matching_results = []
   badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']
 
-  for weights in ['f1']: #['latest','loss','f1','height']:
+  ## Make predictions for each saved weight set : 'latest','loss','f1','height'.
+  ## This allows for simple model ensembling.
+  # weight_list = ['latest','loss','f1','height']
+  weight_list = ['f1']
+  for weights in weight_list:
     net.load_state_dict(torch.load(PR.savedir / f'train/m/best_weights_{weights}.pt', map_location=torch.device(device)))
 
-    for i, dikt in enumerate(PR.preddata):
+    for i, dikt in enumerate(PR.testdata):
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
       d = predsingle(dikt)
       ltps.append(d.pts)
@@ -786,46 +741,42 @@ def predict(PR):
   if PR.mode=='withGT':
     save_pkl(PR.savedir/"predict/scores/matching.pkl", matching_results)
 
-  sys.exit(0)
+  if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  rawshape = load_tif(PR.name_raw.format(**PR.preddata[0])).shape
-  # track_labeled_images = tracking.makeISBILabels(ltps,rawshape)
-  # list_of_edges, list_of_labels = trackAndLabel(ltps)
   tb = tracking2.nn_tracking(ltps, aniso=PR.aniso)
 
-  # tracking2.draw(tb)
-  # plt.ion()
-  # plt.show()
-  # input()
+  ## Draw a graph of the cell lineage tree with nodes colored
+  ## according to the ISBI standard.
+  if False:
+    tracking2.draw(tb)
+    plt.ion()
+    plt.show()
+    input()
 
   ## random colormap for tracking
-  cmap = np.random.rand(256,3).clip(min=0.2)
-  cmap[0] = (0,0,0)
-  cmap = matplotlib.colors.ListedColormap(cmap)
+  cmap_track = np.random.rand(256,3).clip(min=0.2)
+  cmap_track[0] = (0,0,0)
+  cmap_track = matplotlib.colors.ListedColormap(cmap_track)
 
   wipedir(PR.savedir/"track/png")
-  for i, dikt in enumerate(PR.preddata):
+  for i, dikt in enumerate(PR.testdata):
     print(f"Saving image {i+1}/{N_imgs}...", end='\r',flush=True)
-    rawpng = img2png(load_tif(PR.name_raw.format(**dikt)).astype(np.float32), 'I')
-    print("done making rawpng")
-    # lab = tracking2.make_ISBI_label_img(tb,i,rawshape,halfwidth=6)
-    lab = tracking2.createTarget(tb, i, rawshape, PR.sigma) ## WARNING: Using index `i` instead of dikt['time']
-    print("done making lab")
-    labpng = img2png(lab, 'L', colors=cmap)
-    print("done making labpng")
+    raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32)
+    rawpng = img2png(raw, 'I')
+    ## WARNING: Using index `i` for time instead of dikt['time'].
+    ## This allows us to track across arbitrary sequences of images
+    ## to easily test the robustness of the tracker.
+    lab = tracking2.createTarget(tb, i, raw.shape, PR.sigma) 
+    labpng = img2png(lab, 'L', colors=cmap_track)
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
-    print("done making composite")
-    # save_tif(PR.savedir/"track/tif/img{time:03d}.tif".format(**dikt), track_labeled_images[i])
-    # save_png(PR.savedir/"track/c{time:03d}.png".format(**dikt), composite)
-    # save_png(PR.savedir/"track/r{time:03d}.png".format(**dikt), rawpng)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
-    print("done making save_png")
 
 
 if __name__=="__main__":
 
   isbiname = sys.argv[1]
+
   PR = params(isbiname)
 
   DTP = sys.argv[2]
