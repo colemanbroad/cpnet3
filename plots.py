@@ -10,6 +10,9 @@ from numpy import array, exp, zeros, maximum, indices
 def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
+import json
+from tabulate import tabulate
+
 import sys
 import shutil
 import pandas
@@ -58,13 +61,14 @@ def plotHistory(isbiname):
 
   # PR = params()
 
-  # allhistories = glob("/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/*/train/history.pkl")
-  # isbinames = [re.match("cpnet-out/(.*)/train/", x).group(1) for x in allhistories]
   try:
     history = load_pkl(f"/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/{isbiname}/train/history.pkl")
+  # history = load_pkl(PR.savedir/"train/history.pkl")
   except:
     return
-  # history = load_pkl(PR.savedir/"train/history.pkl")
+
+  print(history)
+
   fig, ax = plt.subplots(nrows=4,sharex=True, )
 
   ax[0].plot(np.log(history.lossmeans), label="log train loss")
@@ -126,13 +130,6 @@ def plotAllHistories(metric = 'f1'):
   plt.savefig(f"plots/allHistories_{metric}.pdf")
   plt.close()
 
-  # inp = input("Save? [y]: ")
-  # if inp in ["Y","y"]: 
-  #   print(f"Figsize is {plt.gcf().get_size_inches()}")
-
-import json
-from tabulate import tabulate
-
 ## scatterplot of f1 scores
 def plotMetrics():
 
@@ -168,10 +165,20 @@ def printdikt(dikt):
       print("  ",k2,v2)
 
 if __name__=='__main__':
-  plotMetrics()
 
-  # # wipedir("plots")
-  # for met in metriclist:
-  #   plotAllHistories(met)
-  # for isbi in isbinames:
-  #   plotHistory(isbi)
+  if 'wipe' in sys.argv[1]:
+    wipedir("plots")
+
+  if 'pr' in sys.argv[1]:
+    plotMetrics()
+
+  if 'all' in sys.argv[1]:
+    for met in metriclist:
+      plotAllHistories(met)
+
+  if 'one' in sys.argv[1]:
+    for isbi in isbinames:
+      plotHistory(isbi)
+
+  if sys.argv[1] in isbinames:
+    plotHistory(sys.argv[1])  

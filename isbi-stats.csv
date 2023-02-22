@@ -1,4 +1,4 @@
-name,zoom,old zoom,old kern,old subsample,sigma,subsample,scales,complete,sparse,times 01,times 02,tname,ndim,runtime [h],avg bbox 01,avg bbox 02,dataset size,dataset size 2,raw size,index (by size),comments
+name,zoom,old zoom,old kern,old subsample,sigma,subsample,voxelsize,complete,sparse,times 01,times 02,tname,ndim,runtime [h],avg bbox 01,avg bbox 02,dataset size,dataset size 2,raw size,index (by size),comments
 Fluo-C2DL-Huh7,"(0.5, 0.5)",,,1,"(5,5)",1,"(1,1)",True,False,"(0,30)","(0,30)",3,2,0.23  ,,,68 M,48 M ,41 M ,1,check this scale
 DIC-C2DH-HeLa,"(0.25, 0.25)",1/2,,1,"(5,5)",1,"(0.19 ,0.19)",True,False,"(0,84)","(0,84)",3,2,0.29  ,"(113,127)","(140,149)",85 M,22 M ,42 M ,2,
 PhC-C2DH-U373,"(0.5, 0.5)",1/2,,1,"(5,5)",1,"(0.65 ,0.65)",True,False,"(0,115)","(0,115)",3,2,0.39  ,"(83,80)","(75,73)",116 M,87 M ,48 M ,3,
@@ -16,7 +16,7 @@ Fluo-C3DH-A549-SIM,"(1.0, 0.25, 0.25)",1/2,,1,"(3,5,5)",1,"(0.126, 0.126, 1.0)",
 Fluo-N3DH-SIM+,"(1.0, 0.5, 0.5)",1/2,,1,"(3,5,5)",1,"(0.125, 0.125, 0.200)",True,False,"(0,150)","(0,80)",3,3,30.58 ,"(29,54,55)","(28,52,53)",6.3 G,1.5 G,11 G ,15,cells are stretched in Z. #TODO should we normalize per patch or per image or per dataset?
 Fluo-N3DH-CE,"(1.0, 0.5, 0.5)",1/2,,1,"(3,5,5)",1,"(0.09 , 0.09, 1.0)",True,False,"(0,195)","(0,190)",3,3,43.58 ,"(52,49)","(59,58)",9.0 G,2.3 G,12 G ,16,
 Fluo-C3DH-H157,"(1.0, 0.25, 0.25)","(1/4,1/8,1/8)","1,3,3",1,"(3,5,5)",1,"(0.126, 0.126, 0.5)",True,False,"(0,60)","(0,60)",3,3,48.17 ,"(208,179)","(111,124)",9.9 G,721 M,19 G ,17,
-Fluo-N3DL-DRO,"(1.0, 1.0, 1.0)",,"1.5,3,3",1,"(3,5,5)",1,"(0.406, 0.406, 2.03)",False,True,"(0,50)","(0,50)",3,3,63.07 ,"(26,14)","(18,16)",12.5 G,12 G ,25 G ,18,
+Fluo-N3DL-DRO,"(1.0, 1.0, 1.0)",,"1.5,3,3",1,"(1.5,3,3)",1,"(0.406, 0.406, 2.03)",False,True,"(0,50)","(0,50)",3,3,63.07 ,"(26,14)","(18,16)",12.5 G,12 G ,25 G ,18,
 Fluo-N3DL-TRIC,"(1.0, 1.0, 1.0)",,,1,"(3,5,5)",1,"(1.,1.,1.)",False,True,"(0,65)","(0,210)",3,3,156.55,"(20,17)","(22,17)",32 G,11 G ,51 G ,19,# NA due to cartographic projections
 Fluo-N3DL-TRIF,"(1.0, 0.5, 0.5)",,"3,3,3",1,"(3,3,3)",1,"(0.38 , 0.38, 0.38)",False,True,,,3,3,,"(18,25)","(23,27)",,,320 G,20,
 ,,"default = 1; scalar value implies x,y isoropic rescaling only.","default = (3,5,5) for 3D or (5,5) for 2D.",,,,,,,,,,,,,,,,,,

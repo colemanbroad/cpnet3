@@ -24,13 +24,13 @@ mkdir -p $(dirname $ext)
 ## filters are ordered, i.e.
 ## a file is tested against each filter in turn until match which then determines include/exclude
 
-rsync -ri \
+rsync -raci \
       --delete \
       --exclude "*_/" \
       --exclude "glance_*/" \
       --include "*/" \
+      --include "*.png" \
       --include "*/history.pkl" \
       --include "*/matching*.pkl" \
-      --include "*.png" \
       --exclude "*" \
-  efal:/projects/project-broaddus/$ext/ $ext
+  efal:/projects/project-broaddus/$ext/ $ext | grep '^>' ## only show changed

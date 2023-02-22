@@ -195,6 +195,18 @@ def zoom_img_make_divisible(raw,zoomtuple,divisor):
   assert all(array(raw.shape) % divisor == 0)
   return raw, z2
 
+## guarantees that result is divisible by PR.divisor in every dimension for any size
+## return padding value for prediction so it can be removed
+## padding always on right side so it doesn't shift pts coordinates.
+def pad_until_divisible(img,divisor):
+    rs = array(img.shape)
+    desired_rawsize = ceil(rs/divisor)*divisor
+    padding = desired_rawsize - rs ## PAD ALL DIMS
+    # padding = np.where(rawsize < patch_size, desired_rawsize - rawsize, 0) ## PAD ONLY SMALL DIMS
+    img = np.pad(img, [(0,p) for p in padding], constant_values=0) ## WARN: must be the same const value that's used by torch model
+    assert all(array(img.shape) % divisor == 0)
+    return img, padding
+
 ## x : image::ndarray
 ## kind : in ['I','L'] for "Intensity" / "Label"
 ## colors : colormap
@@ -295,7 +307,12 @@ def load_isbi_csv(isbiname):
 
   for row in csv.DictReader(open('isbi-stats.csv','r')):
     if row['name']==isbiname:
-      return {k:parse(v) for k,v in row.items()}
+      isbi = {k:parse(v) for k,v in row.items()}
+      break
+
+  isbi['voxelsize'] = array(isbi['voxelsize'])
+  isbi['voxelsize'] = isbi['voxelsize'] / isbi['voxelsize'][-1]
+  return isbi
 
 
 ### Core Functions
@@ -307,8 +324,6 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   savedir.mkdir(parents=True,exist_ok=True)
   base = os.path.join(localinfo.local_base, isbiname)
 
-  isbi = load_isbi_csv(isbiname)
-
   # np.random uses:
   # - initial assignment of train/vali labels
   # - shuffle train data every epoch
@@ -318,6 +333,9 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR.isbiname = isbiname
   PR.savedir = savedir
   PR.ndim = 2 if "2D" in isbiname else 3
+
+  isbi = load_isbi_csv(isbiname)
+  PR.isbi = isbi
   
   if isbi['tname'] == 3:
     PR.name_raw = os.path.join(base, "{dset}/t{time:03d}.tif")
@@ -342,7 +360,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   # PR.mode = 'NoGT' # just predict
   PR.run_tracking = True
 
-  ## Colormap for "glances" during training. 
+  ## Colormap for "glances" during training.
   ## Predicted and GT points are single pixels of chosen color
   ## overlayed on raw image.
   cmap = np.zeros((256,3),np.float32)
@@ -351,24 +369,20 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   cmap[2] = (0,1,0) # ground truth
   cmap[3] = (1,0,0) # prediction + ground truth
   cmap = matplotlib.colors.ListedColormap(cmap)
-  PR.cmap_glance = cmap
-  
-  PR.sigma = isbi['sigma']
-  PR.sparse = isbi['sparse']
-  PR.aniso = array(isbi['scales'])
-  if PR.ndim==3: PR.aniso = PR.aniso / PR.aniso[2]
-  
+  PR.cmap_glance = cmap  
 
   ## Define functions that are shared across at least two of:
   ## data(), train() or predict().
 
+  # PR.zoom_img = lambda raw: zoom(raw, isbi['zoom'])
+
   if PR.ndim==2:
 
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(2,2), kernsize=(5,5), finallayer=nn.Sequential)
-    divisor = (8,8)
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(256,256), min_border_shape=(48,48), divisor=divisor)
+    PR.divisor = (8,8)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(256,256), min_border_shape=(48,48), divisor=PR.divisor)
     PR.splitIntoPatchesPred = PR.splitIntoPatches
-    PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
+    # PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
 
     ## train, predict
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([5,5]))
@@ -377,14 +391,14 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   if PR.ndim==3:
 
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
-    divisor = (1,8,8)
-    # PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(16,128,128), min_border_shape=(4,48,48), divisor=divisor)
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(32,256,256), min_border_shape=(4,16,16), divisor=divisor)
-    PR.splitIntoPatchesPred = lambda x: splitIntoPatches(x, desired_outer_shape=(32,400,400), min_border_shape=(8,48,48), divisor=divisor)
-    PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
+    PR.divisor = (1,8,8)
+    # PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(16,128,128), min_border_shape=(4,48,48), divisor=PR.divisor)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(32,256,256), min_border_shape=(4,16,16), divisor=PR.divisor)
+    PR.splitIntoPatchesPred = lambda x: splitIntoPatches(x, desired_outer_shape=(32,400,400), min_border_shape=(8,48,48), divisor=PR.divisor)
+    # PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], PR.divisor)
     
     ## train, predict
-    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=100, scale=PR.aniso)
+    PR.snnMatch  = lambda yt, y: snnMatch(yt, y, dub=100, scale=isbi['voxelsize'])
     PR.findPeaks = lambda x: peak_local_max(x, threshold_abs=.5, exclude_border=False, footprint=np.ones([3,5,5]))
   
   return PR
@@ -397,12 +411,17 @@ def data(PR):
     lab = load_tif(PR.name_pts.format(**dikt))
     pts = array([x['centroid'] for x in regionprops(lab)])
 
-    raw, zoom2 = PR.zoom_img(raw)
-    pts = zoom_pts(pts, zoom2)
+    # raw, zoom2 = PR.zoom_img(raw)
+    raw = zoom(raw,PR.isbi['zoom'])
+    pts = zoom_pts(pts, PR.isbi['zoom'])
 
     ## cast f16 to reduce dataset size
     raw = norm_percentile01(raw,2,99.4).astype(np.float16)
-    target = createTarget(pts, raw.shape, PR.sigma).astype(np.float16)
+    target = createTarget(pts, raw.shape, PR.isbi['sigma']).astype(np.float16)
+
+    raw,padding = pad_until_divisible(raw,PR.divisor)
+    target,padding = pad_until_divisible(target,PR.divisor)
+
     patches = PR.splitIntoPatches(raw.shape)
     raw_patches = [raw[p.outer] for p in patches]
     target_patches = [target[p.outer] for p in patches]
@@ -416,7 +435,7 @@ def data(PR):
   data = [f(dikt) for dikt in PR.traindata]
   data = [s for dat in data for s in dat]
 
-  if PR.sparse:
+  if PR.isbi['sparse']:
     data = [s for s in data if s.target[s.inner_rel].max()>0.5]
 
   wipedir(PR.savedir/"data/")
@@ -427,7 +446,7 @@ def data(PR):
   ids = ceil(np.linspace(0,len(data)-1,10)) if len(data)>10 else range(len(data)) ## <= 10 evenly sampled patches
   for i in ids:
     s = data[i]
-    r = img2png(s.raw, 'I', normalize_intensity=False)
+    r = img2png(s.raw, 'I', normalize_intensity=True)
     mask = find_boundaries(s.target>0.5, mode='inner')
     t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## make borders blue
     composite = r.copy()
@@ -488,7 +507,7 @@ def train(PR, continue_training=False):
   for s in dataset:
     s.weights = np.zeros(s.target.shape)
     s.weights[s.inner_rel] = 1
-    if PR.sparse:
+    if PR.isbi['sparse']:
       s.weights = (s.target > np.exp(-0.5*(3**2))).astype(np.float32) ## 3 std dev
 
   ## Define augmentation for training samples.
@@ -649,16 +668,21 @@ def train(PR, continue_training=False):
   ## Estimate the total time required for training.
   ## N_pix measures the Megapixels of `raw` data in traindata.
   N_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 
+
   ## Rate has units of [megapixels / sec].
-  if PR.ndim==2:
-    # Updated for M1. Old mac rate: 0.0435
-    rate = 1.287871 if str(device)!='cpu' else 0.074418 
-  elif PR.ndim==3:
-    # 0.154036 is cluster CPU rate.
-    rate = 0.976863 if str(device)!='cpu' else 0.154036
+  ratemap = {
+    (2,'cpu','Darwin') : 0.07 , 
+    (3,'cpu','Darwin') : 0.032849 , 
+    (2,'cpu','Linux')  : 0.074418 , 
+    (3,'cpu','Linux')  : 0.154036 , 
+    (2,'cuda','Linux') : 1.28 , 
+    (3,'cuda','Linux') : 0.976 , 
+  }
+  rate = ratemap.get( (PR.ndim, str(device), os.uname().sysname) , np.nan )
+  print((PR.ndim, str(device), os.uname().sysname))
 
   N_completed = len(history.lossmeans)
-  N_epochs = 100
+  N_epochs = 3
   N_remaining = N_epochs - N_completed
   est_time = N_remaining*N_pix/60/60/rate
   print(f"Estimated Time: {N_remaining} epochs * {N_pix:.2f} Mpix / {rate:.2f} Mpix/s = {est_time:.2f}h \n")
@@ -685,8 +709,10 @@ def predict(PR):
 
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
-    raw, zoom2 = PR.zoom_img(raw)
+    # raw, zoom2 = PR.zoom_img(raw)
+    raw = zoom(raw,PR.isbi['zoom'])
     raw = norm_percentile01(raw,2,99.4)
+    raw, padding = pad_until_divisible(raw,PR.divisor)
 
     ## Seamless prediction tiling
     pred = np.zeros(raw.shape)
@@ -694,11 +720,13 @@ def predict(PR):
       x = torch.Tensor(raw[p.outer][None,None]).to(device)
       with torch.no_grad():
         pred[p.inner] = net(x).cpu().numpy()[0,0][p.inner_rel]
+    ss = tuple([slice(0,s-p) for s,p in zip(pred.shape, padding)])
+    pred = pred[ss]
 
     ## Find peaks and transform them back to original image size.
     height = pred.max()    
     pts = PR.findPeaks(pred)
-    pts = zoom_pts(pts , 1 / array(zoom2))
+    pts = zoom_pts(pts , 1 / array(PR.isbi['zoom']))
     
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt))
@@ -754,7 +782,7 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.nn_tracking(ltps, aniso=PR.aniso)
+  tb = tracking2.nn_tracking(ltps, aniso=PR.isbi['voxelsize'])
 
   ## Draw a graph of the cell lineage tree with nodes colored
   ## according to the ISBI standard.
@@ -777,7 +805,7 @@ def predict(PR):
     ## WARNING: Using index `i` for time instead of dikt['time'].
     ## This allows us to track across arbitrary sequences of images
     ## to easily test the robustness of the tracker.
-    lab = tracking2.createTarget(tb, i, raw.shape, PR.sigma) 
+    lab = tracking2.createTarget(tb, i, raw.shape, PR.isbi['sigma']) 
     labpng = img2png(lab, 'L', colors=cmap_track)
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
