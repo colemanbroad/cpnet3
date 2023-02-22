@@ -138,6 +138,7 @@ def splitIntoPatches(img_shape, desired_outer_shape, min_border_shape, divisor):
     b_border = min_border_shape_blocks[n]
 
     if b_outer>=b_img:
+      print(f"n={n}, n_patches = 1")
       return [SN(inner=slice(0,b_img), outer=slice(0,b_img), inner_rel=slice(0,b_img))]
 
     ## otherwise we need to split up the dimension
@@ -145,6 +146,7 @@ def splitIntoPatches(img_shape, desired_outer_shape, min_border_shape, divisor):
     b_max_inner = b_outer - 2 * b_border
     assert(b_max_inner > 0)
     n_patches = ceil(b_img/b_max_inner) ## this should be sufficient
+    print(f"n={n}, n_patches = {n_patches}")
     # n_patches = max(ceil(b_img/b_max_inner),2)
     inner_patch_borders = round(np.linspace(0,b_img,n_patches+1))
     inner_start = inner_patch_borders[:-1]
@@ -329,7 +331,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   for d in ['01','02']:
     tb = isbi['times '+d]
     alltimes = range(tb[0], tb[1], isbi['subsample'])
-    traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [2,4,6]]
+    traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [4]]
     testdata  += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [0]]
   
   PR.traindata = np.array(traindata)
@@ -376,7 +378,8 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
 
     PR.buildUNet = lambda : Unet3(16, [[1],[1]], pool=(1,2,2), kernsize=(3,5,5), finallayer=nn.Sequential)
     divisor = (1,8,8)
-    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(16,128,128), min_border_shape=(4,48,48), divisor=divisor)
+    # PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(16,128,128), min_border_shape=(4,48,48), divisor=divisor)
+    PR.splitIntoPatches = lambda x: splitIntoPatches(x, desired_outer_shape=(32,256,256), min_border_shape=(4,16,16), divisor=divisor)
     PR.splitIntoPatchesPred = lambda x: splitIntoPatches(x, desired_outer_shape=(32,400,400), min_border_shape=(8,48,48), divisor=divisor)
     PR.zoom_img = lambda raw: zoom_img_make_divisible(raw, isbi['zoom'], divisor)
     
@@ -405,13 +408,16 @@ def data(PR):
     target_patches = [target[p.outer] for p in patches]
     samples = [SN(raw=r, target=t, inner=p.inner, outer=p.outer, inner_rel=p.inner_rel, **dikt) 
                   for r,t,p in zip(raw_patches,target_patches,patches)]
+
+    # ipdb.set_trace()
+
     return samples
 
   data = [f(dikt) for dikt in PR.traindata]
   data = [s for dat in data for s in dat]
 
   if PR.sparse:
-    data = [sample for sample in data if sample.target.max()>0.5]
+    data = [s for s in data if s.target[s.inner_rel].max()>0.5]
 
   wipedir(PR.savedir/"data/")
   save_pkl(PR.savedir/"data/dataset.pkl", data)
@@ -429,7 +435,7 @@ def data(PR):
     composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
     save_png(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
 
-  return data
+  # return data
 
 
 ## Train CPNET; Save history of validation metrics and best CPNET weights
@@ -472,7 +478,7 @@ def train(PR, continue_training=False):
     save_pkl(PR.savedir / "train/labels.pkl", labels)
     history = SN(lossmeans=[], valimeans=[])
 
-  assert len(dataset)>8
+  # assert len(dataset)>8
   assert len(labels)==len(dataset)
 
   ## Add mask to each sample that removes the patches
@@ -641,11 +647,15 @@ def train(PR, continue_training=False):
 
 
   ## Estimate the total time required for training.
-  N_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 ## Megapixels of raw data in traindata
+  ## N_pix measures the Megapixels of `raw` data in traindata.
+  N_pix = np.sum([np.prod(d.raw.shape) for d in traindata]) / 1_000_000 
+  ## Rate has units of [megapixels / sec].
   if PR.ndim==2:
-    rate = 1.287871 if str(device)!='cpu' else 0.074418 # updated for M1. Old mac rate: 0.0435 [megapixels / sec] (1.4 was old gpu rate... did i slow down?)
+    # Updated for M1. Old mac rate: 0.0435
+    rate = 1.287871 if str(device)!='cpu' else 0.074418 
   elif PR.ndim==3:
-    rate = 0.976863 if str(device)!='cpu' else 0.0310 # [megapixels / sec] (1.0 was old gpu rate... did i slow down?)
+    # 0.154036 is cluster CPU rate.
+    rate = 0.976863 if str(device)!='cpu' else 0.154036
 
   N_completed = len(history.lossmeans)
   N_epochs = 100
@@ -782,7 +792,7 @@ if __name__=="__main__":
   DTP = sys.argv[2]
 
   if 'D' in DTP:
-    dataset = data(PR)
+    data(PR)
   if 'Tc' in DTP:
     train(PR, continue_training=1)
   elif 'T' in DTP:
