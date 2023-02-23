@@ -673,16 +673,16 @@ def train(PR, continue_training=False):
   ratemap = {
     (2,'cpu','Darwin') : 0.07 , 
     (3,'cpu','Darwin') : 0.032849 , 
-    (2,'cpu','Linux')  : 0.074418 , 
+    (2,'cpu','Linux')  : 0.42 , ## wow
     (3,'cpu','Linux')  : 0.154036 , 
-    (2,'cuda','Linux') : 1.28 , 
+    (2,'cuda','Linux') : 2.92 ,  ## wow
     (3,'cuda','Linux') : 0.976 , 
   }
   rate = ratemap.get( (PR.ndim, str(device), os.uname().sysname) , np.nan )
   print((PR.ndim, str(device), os.uname().sysname))
 
   N_completed = len(history.lossmeans)
-  N_epochs = 3
+  N_epochs = 100
   N_remaining = N_epochs - N_completed
   est_time = N_remaining*N_pix/60/60/rate
   print(f"Estimated Time: {N_remaining} epochs * {N_pix:.2f} Mpix / {rate:.2f} Mpix/s = {est_time:.2f}h \n")
