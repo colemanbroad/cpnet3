@@ -34,6 +34,13 @@ from skimage.morphology.binary import binary_dilation
 from skimage.segmentation      import find_boundaries
 from tifffile                  import imread
 
+def avgpool(img, kern):
+  if img.ndim==2:
+    f_pool = torch.nn.functional.avg_pool2d
+  else:
+    f_pool = torch.nn.functional.avg_pool3d
+  return f_pool(torch.Tensor(img)[None], kern)[0].numpy()
+
 # import isbidata
 
 ## 3rd party 
@@ -312,6 +319,9 @@ def load_isbi_csv(isbiname):
 
   isbi['voxelsize'] = array(isbi['voxelsize'])
   isbi['voxelsize'] = isbi['voxelsize'] / isbi['voxelsize'][-1]
+
+  p = isbi['pool']
+  isbi['pool'] = (1,p,p) if isbi['ndim']==3 else (p,p)
   return isbi
 
 
@@ -412,8 +422,9 @@ def data(PR):
     pts = array([x['centroid'] for x in regionprops(lab)])
 
     # raw, zoom2 = PR.zoom_img(raw)
-    raw = zoom(raw,PR.isbi['zoom'])
-    pts = zoom_pts(pts, PR.isbi['zoom'])
+    # raw = zoom(raw,PR.isbi['zoom'])
+    raw = avgpool(raw, PR.isbi['pool'])
+    pts = zoom_pts(pts, 1 / array(PR.isbi['pool']))
 
     ## cast f16 to reduce dataset size
     raw = norm_percentile01(raw,2,99.4).astype(np.float16)
@@ -446,13 +457,13 @@ def data(PR):
   ids = ceil(np.linspace(0,len(data)-1,10)) if len(data)>10 else range(len(data)) ## <= 10 evenly sampled patches
   for i in ids:
     s = data[i]
-    r = img2png(s.raw, 'I', normalize_intensity=True)
+    r = img2png(s.raw, 'I', normalize_intensity=False)
     mask = find_boundaries(s.target>0.5, mode='inner')
     t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## make borders blue
     composite = r.copy()
     m = np.any(t[:,:,:3]!=0 , axis=2)
     composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
-    save_png(PR.savedir/f'data/png/t{s.time:03d}-d{i:04d}.png', composite)
+    save_png(PR.savedir/f'data/png/t-{s.dset}-{s.time:03d}-d{i:04d}.png', composite)
 
   # return data
 
@@ -710,7 +721,8 @@ def predict(PR):
   def predsingle(dikt):
     raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
     # raw, zoom2 = PR.zoom_img(raw)
-    raw = zoom(raw,PR.isbi['zoom'])
+    # raw = zoom(raw,PR.isbi['zoom'])
+    raw = avgpool(raw, PR.isbi['pool'])
     raw = norm_percentile01(raw,2,99.4)
     raw, padding = pad_until_divisible(raw,PR.divisor)
 
@@ -726,7 +738,7 @@ def predict(PR):
     ## Find peaks and transform them back to original image size.
     height = pred.max()    
     pts = PR.findPeaks(pred)
-    pts = zoom_pts(pts , 1 / array(PR.isbi['zoom']))
+    pts = zoom_pts(pts , array(PR.isbi['pool']))
     
     if PR.mode=='withGT':
       lab = load_tif(PR.name_pts.format(**dikt))
