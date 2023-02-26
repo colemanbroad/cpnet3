@@ -144,8 +144,19 @@ def plotMetrics():
     print(isbiname)
 
   alltables = pandas.DataFrame(alltables)
-  print(alltables)
-  facetgrid = sns.relplot(data=alltables, x='precision',y='recall',hue='dset',col='isbi',col_wrap=6, height=1.5, aspect=1)
+  pr = alltables.groupby(['isbi','dset'])[['precision','recall']].mean().sort_values('recall')
+
+  print(pr)
+
+  isbi_sorted = alltables.groupby('isbi')[['recall']].mean().sort_values('recall')
+  # alltables = alltables.reindex(pr.index)
+  # print(isbi_sorted)
+
+  # sys.exit(0)
+  # ipdb.set_trace()
+
+  # print(alltables)
+  facetgrid = sns.relplot(data=alltables, x='precision',y='recall',hue='dset',col='isbi',col_wrap=6, col_order=isbi_sorted.index, height=1.5, aspect=1)
   # df[['POINTS','PRICE','short-name']].apply(lambda row: facetgrid.ax.text(*row),axis=1);
   plt.gcf().set_size_inches(14.12,  9.1)
   # plt.show()
