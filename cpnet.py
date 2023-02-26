@@ -457,7 +457,7 @@ def data(PR):
   ids = ceil(np.linspace(0,len(data)-1,10)) if len(data)>10 else range(len(data)) ## <= 10 evenly sampled patches
   for i in ids:
     s = data[i]
-    r = img2png(s.raw, 'I', normalize_intensity=False)
+    r = img2png(s.raw, 'I', normalize_intensity=True)
     mask = find_boundaries(s.target>0.5, mode='inner')
     t = img2png(mask.astype(np.uint8), 'L', colors=PR.cmap_glance) ## make borders blue
     composite = r.copy()
@@ -482,6 +482,9 @@ def train(PR, continue_training=False):
 
   dataset = load_pkl(PR.savedir/"data/dataset.pkl")
   dataset = array(dataset)
+
+  avgsize = np.mean([np.prod(s.raw.shape) for s in dataset])
+  print(f"avgsize of patches = {avgsize}")
 
   ## network, weights and optimization
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -719,7 +722,7 @@ def predict(PR):
   net = net.to(device)
 
   def predsingle(dikt):
-    raw = load_tif(PR.name_raw.format(**dikt)) #.transpose([1,0,2,3])[1]
+    raw = load_tif(PR.name_raw.format(**dikt)).astype(np.float32) #.transpose([1,0,2,3])[1]
     # raw, zoom2 = PR.zoom_img(raw)
     # raw = zoom(raw,PR.isbi['zoom'])
     raw = avgpool(raw, PR.isbi['pool'])
