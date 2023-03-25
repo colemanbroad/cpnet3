@@ -328,11 +328,14 @@ def load_isbi_csv(isbiname):
 ### Core Functions
 
 ## Parameters for data(), train(), and predict()
-def params(isbiname = "Fluo-C2DL-Huh7"):
+def params():
 
+  isbiname = "flywing"
   savedir = Path(f"cpnet-out/{isbiname}/")
+  # savedir = Path("cpnet-out/flywing/")
   savedir.mkdir(parents=True,exist_ok=True)
-  base = os.path.join(localinfo.local_base, 'data-isbi/', isbiname)
+  # base = os.path.join(localinfo.local_base, 'data-isbi/', isbiname)
+  base = os.path.join(localinfo.local_base, "data-noisbi/care_flywing_crops/")
 
   # np.random uses:
   # - initial assignment of train/vali labels
@@ -342,25 +345,30 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   PR = SN()
   PR.isbiname = isbiname
   PR.savedir = savedir
-  PR.ndim = 2 if "2D" in isbiname else 3
+  # PR.ndim = 2 if "2D" in isbiname else 3
+  PR.ndim = 2
 
   isbi = load_isbi_csv(isbiname)
   PR.isbi = isbi
   
-  if isbi['tname'] == 3:
-    PR.name_raw = os.path.join(base, "{dset}/t{time:03d}.tif")
-    PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:03d}.tif")
-  elif isbi['tname'] == 4:
-    PR.name_raw = os.path.join(base, "{dset}/t{time:04d}.tif")
-    PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
+  # if isbi['tname'] == 3:
+  #   PR.name_raw = os.path.join(base, "{dset}/t{time:03d}.tif")
+  #   PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:03d}.tif")
+  # elif isbi['tname'] == 4:
+  #   PR.name_raw = os.path.join(base, "{dset}/t{time:04d}.tif")
+  #   PR.name_pts = os.path.join(base, "{dset}_GT/TRA/man_track{time:04d}.tif")
+  PR.name_raw = os.path.join(base, "raw/raw{time:03d}.tif")
+  PR.name_pts = os.path.join(base, "gt/gt{time:03d}.tif")
 
-  traindata = []
-  testdata = []
-  for d in ['01','02']:
-    tb = isbi['times '+d]
-    alltimes = range(tb[0], tb[1], isbi['subsample'])
-    traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [4]]
-    testdata  += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [0]]
+  # traindata = []
+  # testdata = []
+  # for d in ['01','02']:
+  #   tb = isbi['times '+d]
+  #   alltimes = range(tb[0], tb[1], isbi['subsample'])
+  #   traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [4]]
+  #   testdata  += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [0]]
+  traindata = [dict(time=i) for i in range(30) if i < 20]
+  testdata  = [dict(time=i) for i in range(30) if i > 20]
   
   PR.traindata = np.array(traindata)
   PR.testdata  = np.array(testdata)
@@ -463,7 +471,8 @@ def data(PR):
     composite = r.copy()
     m = np.any(t[:,:,:3]!=0 , axis=2)
     composite[m] = composite[m]/2.0 + t[m]/2.0 ## does not affect u8 dtype !
-    save_png(PR.savedir/f'data/png/t-{s.dset}-{s.time:03d}-d{i:04d}.png', composite)
+    # save_png(PR.savedir/f'data/png/t-{s.dset}-{s.time:03d}-d{i:04d}.png', composite)
+    save_png(PR.savedir/f'data/png/t-{s.time:03d}-d{i:04d}.png', composite)
 
   # return data
 
@@ -778,7 +787,8 @@ def predict(PR):
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
       d = predsingle(dikt)
       ltps.append(d.pts)
-      save_png(PR.savedir/"predict/pred/t-{dset}-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
+      # save_png(PR.savedir/"predict/pred/t-{dset}-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
+      save_png(PR.savedir/"predict/pred/t-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
       
       if PR.mode=='withGT':
         print(dedent(f"""
@@ -829,8 +839,9 @@ def predict(PR):
 if __name__=="__main__":
 
   isbiname = sys.argv[1]
+  assert isbiname=='flywing'
 
-  PR = params(isbiname)
+  PR = params()
 
   DTP = sys.argv[2]
 
