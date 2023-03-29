@@ -323,7 +323,9 @@ def load_isbi_csv(isbiname):
       break
 
   isbi['voxelsize'] = array(isbi['voxelsize'])
-  isbi['voxelsize'] = isbi['voxelsize'] / isbi['voxelsize'][-1]
+  isbi['voxelsize'] = isbi['voxelsize'][::-1] ## x,y,z -> z,y,x
+  isbi['voxelsize'] = isbi['voxelsize'] / isbi['voxelsize'][-1] ## normalize so X size == 1 (thus Z > 1)
+  # ipdb.set_trace()
 
   p = isbi['pool']
   isbi['pool'] = (1,p,p) if isbi['ndim']==3 else (p,p)

@@ -5,6 +5,8 @@ from pykdtree.kdtree import KDTree
 import matplotlib
 from pointmatch import snnMatch, build_scores
 from cpnet import load_isbi_csv
+import os
+import pickle
 
 from tifffile                  import imread
 import re
@@ -89,8 +91,8 @@ def nn_tracking(*,dtps,aniso=(1,1),dub=100):
     ## WARN: do we want t_idx-1 or t-1 ? t_idx-1 connects across many frames.
     pts_prev = dtps[t_prev]
 
-    kdt = KDTree(array(pts_prev))
-    dist, curr2prev = kdt.query(array(pts), k=1, distance_upper_bound=dub)
+    kdt = KDTree(array(pts_prev)*aniso)
+    dist, curr2prev = kdt.query(array(pts)*aniso, k=1, distance_upper_bound=dub)
     for idx_curr,idx_prev in enumerate(curr2prev):
       p = None if idx_prev==len(pts_prev) else (t_prev,idx_prev)
       parents[(t,idx_curr)] = p
@@ -311,14 +313,13 @@ def conformTracking(tb):
   assert pv-pk==set()
 
 def evalNNTrackingOnIsbiGTDirectory(directory):
-  isbiname = path.normpath(directory).split(path.sep)[-3]
-  dataset = path.normpath(directory).split(path.sep)[-2]
+  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
   isbi = load_isbi_csv(isbiname)
   # directory = "data-isbi/DIC-C2DH-HeLa/01_GT/TRA/"
   gt = loadISBITrackingFromDisk(directory)
   dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
-  aniso = [1,1] if '2D' in directory else [1,1,1]
-  # aniso = isbi['voxelsize']
+  # aniso = [1,1] if '2D' in directory else [1,1,1]
+  aniso = isbi['voxelsize']
   dub = 100
   yp = nn_tracking(dtps=dtps, aniso=aniso, dub=dub)
   # ipdb.set_trace()
@@ -327,9 +328,29 @@ def evalNNTrackingOnIsbiGTDirectory(directory):
 
 def evalAllDirs():
   res = dict()
-  for dire in glob("../data-isbi/*/*_GT/TRA/"):
-    print(dire)
-    res.update(evalNNTrackingOnIsbiGTDirectory(dire))
+  # for dire in glob("../data-isbi/*/*_GT/TRA/"):
+
+  base = path.normpath("../cpnet-out/")
+  for directory in sorted(glob("/projects/project-broaddus/rawdata/isbi_train/*/*_GT/TRA/")):
+    print(directory)
+    isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
+    outdir = path.join(base, isbiname, dataset, 'track-analysis')
+    os.makedirs(outdir, exist_ok=True)
+    # ipdb.set_trace()
+
+    try:
+      assert False
+      d = pickle.load(open(outdir + '/compare_results-aniso.pkl','rb'))
+      if len(d)==0:
+        print("Empty Data!")
+        assert False
+      # pickle.dump(d, open(outdir + '/compare_results-aniso.pkl','wb'))
+      # os.remove(directory + '/compare_results-aniso.pkl')
+    except:
+      d = evalNNTrackingOnIsbiGTDirectory(directory)
+      pickle.dump(d, open(outdir + '/compare_results-aniso.pkl','wb'))
+
+    res.update(d)
   return res
 
 def formatres(res):
