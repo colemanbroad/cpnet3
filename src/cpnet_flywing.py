@@ -773,7 +773,7 @@ def predict(PR):
   wipedir(PR.savedir / "predict/scores")
   wipedir(PR.savedir / "predict/pred")
   N_imgs = len(PR.testdata)
-  ltps = []
+  dtps = dict()
   matching_results = []
   badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']
 
@@ -787,7 +787,7 @@ def predict(PR):
     for i, dikt in enumerate(PR.testdata):
       print(f"Predicting on image {i+1}/{N_imgs}...", end='\r',flush=True)
       d = predsingle(dikt)
-      ltps.append(d.pts)
+      dtps[dikt['time']] = d.pts
       # save_png(PR.savedir/"predict/pred/t-{dset}-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
       save_png(PR.savedir/"predict/pred/t-{time:04d}-{weights}.png".format(**dikt,weights=weights), img2png(d.pred, 'I', colors=plt.cm.magma))
       
@@ -808,7 +808,7 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.nn_tracking(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
+  tb = tracking2.nn_tracking(dtps=dtps, aniso=PR.isbi['voxelsize'], dub=100)
   tracking2.addIsbiLabels(tb)
 
   ## Draw a graph of the cell lineage tree with nodes colored

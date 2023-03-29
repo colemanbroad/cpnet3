@@ -63,28 +63,39 @@ def addIsbiLabels(tb):
 ## i.e. label zero serves as the background label
 ## We use the index into ltps as the initial label, but convert
 ## this label to the ISBI scheme for most processing
-def nn_tracking(*,ltps,aniso=(1,1),dub=100):
+def nn_tracking(*,dtps,aniso=(1,1),dub=100):
   parents = dict()
-  ptsdict = dict()
+  pts_dict = dict()
 
-  for t,_ in enumerate(ltps): 
-    ltps[t] = np.array(ltps[t])
-    for i,p in enumerate(ltps[t]):
-      ptsdict[(t,i)] = p
+  times = sorted(list(dtps.keys()))
 
-  for i, p in enumerate(ltps[0]): parents[(0,i)] = None
+  ## put all the points in a big dictionary
+  for t,pts in dtps.items(): 
+    for i,p in enumerate(pts):
+      pts_dict[(t,i)] = p
 
-  for t, pts in enumerate(ltps):
-    if t==0: continue
-    pts_prev = ltps[t-1]
+  t0 = times[0]
+  for idx, _ in enumerate(dtps[t0]): parents[(t0,idx)] = None
 
-    kdt = KDTree(pts_prev)
-    dist, indices = kdt.query(pts, k=1, distance_upper_bound=dub)
-    for i,j in enumerate(indices):
-      p = None if j==len(pts_prev) else (t-1,j)
-      parents[(t,i)] = p
 
-  tb = SN(parents=parents, pts=ptsdict)
+  # ipdb.set_trace()
+
+  ## for each pts(t) connect all the points to nearest neib
+  ## in the previous pts(t-1).
+  for t_idx in range(1,len(times)):
+    t = times[t_idx]
+    pts = dtps[t]
+    t_prev = times[t_idx-1]
+    ## WARN: do we want t_idx-1 or t-1 ? t_idx-1 connects across many frames.
+    pts_prev = dtps[t_prev]
+
+    kdt = KDTree(array(pts_prev))
+    dist, curr2prev = kdt.query(array(pts), k=1, distance_upper_bound=dub)
+    for idx_curr,idx_prev in enumerate(curr2prev):
+      p = None if idx_prev==len(pts_prev) else (t_prev,idx_prev)
+      parents[(t,idx_curr)] = p
+
+  tb = SN(parents=parents, pts=pts_dict)
   conformTracking(tb)
   return tb
 
@@ -294,37 +305,38 @@ def conformTracking(tb):
   tb.times = sorted(list(tb.time2labelset.keys()))
 
   assert tb.pts.keys() == tb.parents.keys()
-  pk = tb.pts.keys()
+  pk = tb.parents.keys()
   # pv = {v for v in tb.parents.values() if v[0]!=-1 and v[1]!=0}
   pv = {v for v in tb.parents.values() if v is not None}
   assert pv-pk==set()
 
-def evalNNTrackingOnGTDirectory(directory):
-  isbiname = path.normpath(directory).split(path.sep)[1]
-  dataset = path.normpath(directory).split(path.sep)[2]
+def evalNNTrackingOnIsbiGTDirectory(directory):
+  isbiname = path.normpath(directory).split(path.sep)[-3]
+  dataset = path.normpath(directory).split(path.sep)[-2]
   isbi = load_isbi_csv(isbiname)
   # directory = "data-isbi/DIC-C2DH-HeLa/01_GT/TRA/"
   gt = loadISBITrackingFromDisk(directory)
-  ltps = [[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times]
+  dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
   aniso = [1,1] if '2D' in directory else [1,1,1]
   # aniso = isbi['voxelsize']
   dub = 100
-  yp = nn_tracking(ltps=ltps, aniso=aniso, dub=dub)
+  yp = nn_tracking(dtps=dtps, aniso=aniso, dub=dub)
+  # ipdb.set_trace()
   scores = compare_trackings(gt,yp,aniso,dub)
   return {(isbiname, dataset) : scores}
 
 def evalAllDirs():
   res = dict()
-  for dire in glob("data-isbi/*/*_GT/TRA/"):
+  for dire in glob("../data-isbi/*/*_GT/TRA/"):
     print(dire)
-    res.update(evalNNTrackingOnGTDirectory(dire))
+    res.update(evalNNTrackingOnIsbiGTDirectory(dire))
   return res
 
 def formatres(res):
   lines = []
   for k,v in res.items():
     d = dict(name=k[0], dset=k[1][:2])
-    # d.update({'node-'+k2:v2 for k2,v2 in v.node.__dict__.items()})
+    d.update({'node-'+k2:v2 for k2,v2 in v.node.__dict__.items()})
     d.update({'edge-'+k2:v2 for k2,v2 in v.edge.__dict__.items()})
     lines.append(d)
 
@@ -336,7 +348,7 @@ def formatres(res):
 ## across the entire timeseries
 def compare_trackings(gt,yp,aniso,dub):
 
-  timeset = gt.time2labelset.keys() | yp.time2labelset.keys()
+  times = sorted(list(gt.time2labelset.keys() | yp.time2labelset.keys()))
   
   ## maybe find point matches should work with maps instead of arrays...
   ## the default should be that we pass around unique id's for pts... i.e. label, (time,label), (gt,time,label), etc
@@ -346,45 +358,39 @@ def compare_trackings(gt,yp,aniso,dub):
     _yp = {(t,l):yp.pts[(t,l)] for l in yp.time2labelset[t]}
     # ipdb.set_trace()
     return snnMatch(_gt, _yp, dub=dub, scale=aniso)
-  node_matches = [f(t) for t in timeset]
+  node_matches = {t:f(t) for t in times}
 
   ## TODO: do more with the scores for all timepoints
 
   node_totals = build_scores(
-    n_m  = sum([x.n_matched for x in node_matches]),
-    n_p  = sum([x.n_proposed for x in node_matches]),
-    n_gt = sum([x.n_gt for x in node_matches]),
+    n_m  = sum([x.n_matched for x in node_matches.values()]),
+    n_p  = sum([x.n_proposed for x in node_matches.values()]),
+    n_gt = sum([x.n_gt for x in node_matches.values()]),
     )
 
   ## count edges. if parent label == 0 => cell appearance
-  n_edges_gt = len([n2 for n1,n2 in gt.parents.items() if n2 != None])
-  n_edges_yp = len([n2 for n1,n2 in yp.parents.items() if n2 != None])
+  n_edges_gt = len([v for v in gt.parents.values() if v != None])
+  n_edges_yp = len([v for v in yp.parents.values() if v != None])
 
   ## Now we find matching edges by going pt -> parent -> match == pt -> match -> parent (it's a commutative diagram)
   edge_matches = dict()
-  gt_edges_nomatch = set()
-  for t in range(1,len(node_matches)):
+  # gt_edges_nomatch = set()
+  for t in times[1:]:
     for n1,n2 in node_matches[t].matches.items():
-      p1 = gt.parents.get(n1, 'missing node')
-      # if p1 is None: 
-      #   print(f"gt {n1} does not exist")
-      #   continue
-      p2 = yp.parents.get(n2, 'missing node')
-      # if p2 is None:
-      #   print(f"yp {n2} does not exist")
-      #   continue
-
-      # if p1 is None or p2 is None or p1[1]==0 or p2[1]==0: 
+      p1 = gt.parents[n1]
+      p2 = yp.parents[n2]
+      # ipdb.set_trace()
       if p1 is None or p2 is None:
-        # print("BG parent: ", p1, p2)
         continue
+
       ## WARN: use p1[0] instead of i-1 because of gaps in tracks!
       if node_matches[p1[0]].matches.get(p1,None)==p2:
         edge_matches[frozenset({p1,n1})] = frozenset({p2,n2})
-      else:
-        print(f"No matching parents {n1}->{p1} != {n2}->{p2}")
-        # ipdb.set_trace()
-        gt_edges_nomatch |= {frozenset({p1,n1})}
+
+      # else:
+      #   print(f"No matching parents {n1}->{p1} != {n2}->{p2}")
+      #   # ipdb.set_trace()
+      #   gt_edges_nomatch |= {frozenset({p1,n1})}
 
   edge_totals = build_scores(n_m=len(edge_matches), n_p=n_edges_yp, n_gt=n_edges_gt)
 
