@@ -95,11 +95,46 @@ savedir = Path("test_scipyzoom")
 #   # res = norm_percentile01(res , 2, 99.4)
 #   # save_tif(savedir / f"a549-{i}-4.png", img2png(res, 'I', normalize_intensity=True))
 
-## The pooling is strange and nonuniform. The division into blocks is as even as possible, 
-## And the remainder is distributed as evenly as possible using overlaps of adjacent blocks
-## Every 
-x = torch.Tensor(np.arange(5))
-y = torch.nn.functional.adaptive_max_pool1d(x[None,None], 2)
+
+"""
+There are so many ways to upscale and downscale images.
+What kinds of scaling are goverened by sampling theory?
+What makes a function "scaling"? Is there a definition?
+
+As we zoom "in" (upscaling) there may be arbitrarily many choices we make for filling in the missing data.
+Computational super resolution is a class of techniques. There are more choices than n-order spline interpolation.
+
+For zoom "out" (downscaling) we are more constrained. 
+The eye takes some kind of an average over the field of view, so zoom out should be some kind of average.
+
+But we can perform various kinds of local averaging directly, or by prefiltering + sampling, or by a full 
+conversion to Fourier space, cutting off or extrapolating high frequencies, and then back transforming.
+
+scipy.ndimage.zoom() ## with/out prefilter
+torch.nn.functional.avg_pool()
+
+- How do these mathematical concepts relate to the functions at our disposal?
+- How do these functions affect the "domain" of the image?
+- Can we demonstrate aliasing problems with good test examples?
+
+
+
+
+"""
+
+
+## The adaptive_max_pool1d is strange and nonuniform. The division into blocks is as even as possible, 
+## And the remainder is distributed as evenly as possible using overlaps of adjacent blocks.
+
+N = 10
+M = 15
+x0 = torch.Tensor(np.arange(N))
+y0 = torch.rand(N)
+plt.plot(x0,y0,'-o')
+
+x1 = np.linspace(0,N-1,M)
+y1 = torch.nn.functional.adaptive_avg_pool1d(y0[None,None], M)[0,0]
+plt.plot(x1,y1,'-o')
 
 
 # x = np.arange(20):

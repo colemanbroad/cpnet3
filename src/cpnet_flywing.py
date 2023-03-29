@@ -50,8 +50,8 @@ def avgpool(img, kern):
 from torch_models import Unet3, init_weights, nn
 from pointmatch import snnMatch
 import tracking2
-
 import localinfo
+
 
 """
 RUN ME ON SLURM!!
@@ -331,11 +331,12 @@ def load_isbi_csv(isbiname):
 def params():
 
   isbiname = "flywing"
-  savedir = Path(f"cpnet-out/{isbiname}/")
-  # savedir = Path("cpnet-out/flywing/")
+  savedir = os.path.join(localinfo.local_base, "cpnet-out/", isbiname)
+  savedir = Path(savedir)
   savedir.mkdir(parents=True,exist_ok=True)
-  # base = os.path.join(localinfo.local_base, 'data-isbi/', isbiname)
+
   base = os.path.join(localinfo.local_base, "data-noisbi/care_flywing_crops/")
+  base = Path(base)
 
   # np.random uses:
   # - initial assignment of train/vali labels
@@ -807,12 +808,13 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.nn_tracking(ltps, aniso=PR.isbi['voxelsize'])
+  tb = tracking2.nn_tracking(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
+  tracking2.addIsbiLabels(tb)
 
   ## Draw a graph of the cell lineage tree with nodes colored
   ## according to the ISBI standard.
-  if False:
-    tracking2.draw(tb)
+  if True:
+    tracking2.drawLineageTree(tb)
     plt.ion()
     plt.show()
     input()
@@ -830,8 +832,11 @@ def predict(PR):
     ## WARNING: Using index `i` for time instead of dikt['time'].
     ## This allows us to track across arbitrary sequences of images
     ## to easily test the robustness of the tracker.
-    lab = tracking2.createTarget(tb, i, raw.shape, PR.isbi['sigma']) 
+    lab = tracking2.createTargetWithTrackingLabels(tb, i, raw.shape, PR.isbi['sigma']) 
+    labtails = tracking2.createTailsWithTrackingLabels(tb,i,raw.shape)
+
     labpng = img2png(lab, 'L', colors=cmap_track)
+    labtailpng = img2png(labtails, 'L')
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)
 

@@ -11,7 +11,7 @@
 # Contributions
 
 - Demonstration that weak centerpoint annotations alone are sufficient for
-  training SOTA cell tracking across a broad spectrum of real data.
+  competitive cell tracking across a broad spectrum of real data.
 - Achieves best total score in ISBI CTC benchmark, and 1st place cell tracking
   score on four individual datasets
 - Only two obvious parameters required (includes both training and prediction)
@@ -39,16 +39,14 @@ In this paper we explore the generality of this approach, by using the same cent
 cell linking method to each of the 20 datasets in the ISBI Cell Tracking Challenge.
 
 
+
+
+
 - Full 3D instance segmentation annotations are difficult to make.
-  - Segmentation models based on pixelwise classifiers often undersegment
-    densely packed cells in low SNR data.
+- Segmentation models based on pixelwise classifiers often undersegment
+  densely packed cells in low SNR data.
 - Cell centerpoint detection models avoid undersegmentation in densely packed
   objects.
-- We were curious if cell centerpoints alone could be sufficient for cell
-  tracking.
-  - Slow moving cells are simple to track with centerpoints alone, but how
-    common is this in real data?
-
 
 The ISBI CTC is designed with the assumption that segmentation is performed 
 either prior to or jointly with cell tracking. This is demonstrated in that the 

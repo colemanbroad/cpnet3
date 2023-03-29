@@ -50,8 +50,8 @@ def avgpool(img, kern):
 from torch_models import Unet3, init_weights, nn
 from pointmatch import snnMatch
 import tracking2
-
 import localinfo
+
 
 """
 RUN ME ON SLURM!!
@@ -282,6 +282,11 @@ def img2png(x, kind, colors=None, normalize_intensity=True):
 
   return x
 
+# ## In order to draw tails on our timeseries tracking we need a tracking
+# ## result. First, let's draw tails from one result without worrying about
+# ## GT results or matching them together.
+# def plotTailsOnImg(tracking,image):
+
 def norm_minmax01(x):
   hi = x.max()
   lo = x.min()
@@ -330,9 +335,11 @@ def load_isbi_csv(isbiname):
 ## Parameters for data(), train(), and predict()
 def params(isbiname = "Fluo-C2DL-Huh7"):
 
-  savedir = Path(f"cpnet-out/{isbiname}/")
+  savedir = os.path.join(localinfo.local_base, "cpnet-out/", isbiname)
+  savedir = Path(savedir)
   savedir.mkdir(parents=True,exist_ok=True)
   base = os.path.join(localinfo.local_base, 'data-isbi/', isbiname)
+  base = Path(base)
 
   # np.random uses:
   # - initial assignment of train/vali labels
@@ -797,12 +804,13 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.nn_tracking(ltps, aniso=PR.isbi['voxelsize'])
+  tb = tracking2.nn_tracking(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
+  tracking2.addIsbiLabels(tb)
 
   ## Draw a graph of the cell lineage tree with nodes colored
   ## according to the ISBI standard.
   if False:
-    tracking2.draw(tb)
+    tracking2.drawLineageTree(tb)
     plt.ion()
     plt.show()
     input()
@@ -820,7 +828,8 @@ def predict(PR):
     ## WARNING: Using index `i` for time instead of dikt['time'].
     ## This allows us to track across arbitrary sequences of images
     ## to easily test the robustness of the tracker.
-    lab = tracking2.createTarget(tb, i, raw.shape, PR.isbi['sigma']) 
+    lab = tracking2.createTargetWithTrackingLabels(tb, i, raw.shape, PR.isbi['sigma']) 
+    tracking2.createTailsWithTrackingLabels(tb,i,raw.shape)
     labpng = img2png(lab, 'L', colors=cmap_track)
     composite = np.round(rawpng/2 + labpng/2).astype(np.uint8).clip(min=0,max=255)
     save_png(PR.savedir/"track/png/img{time:03d}.png".format(**dikt), composite)

@@ -10,7 +10,7 @@ cd ~/Desktop/mpi-remote/project-broaddus/
 # ext="cpnet3/cpnet-out/Fluo-C2DL-Huh7"
 # ext="cpnet3/cpnet-out/Fluo-N3DL-DRO"
 # ext="cpnet3/cpnet-out/Fluo-C3DH-A549"
-ext="cpnet3/cpnet-out"
+# ext="cpnet3/cpnet-out"
 
 # open $ext
 # exit
@@ -34,3 +34,15 @@ rsync -raci \
       --include "*/matching*.pkl" \
       --exclude "*" \
   efal:/projects/project-broaddus/$ext/ $ext | grep '^>' ## only show changed
+
+
+rsync -raci \
+      --delete \
+      --exclude "*_/" \
+      --exclude "glance_*/" \
+      --include "*/" \
+      --include "*.png" \
+      --include "*/history.pkl" \
+      --include "*/matching*.pkl" \
+      --exclude "*" \
+  efal:/fileserver//$ext/ $ext | grep '^>' ## only show changed

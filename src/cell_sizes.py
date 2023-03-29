@@ -36,7 +36,6 @@ def analyze_single(labname):
     rp.boxdims = rp.bbox[:,D:] - rp.bbox[:,:D]
     return SN(lab=labname,time=_time,zpos=_zpos,rp=rp)
 
-
 def run():
   for isbiname in isbidata.isbi_by_size:
     for dataset in ['01','02']:
@@ -63,3 +62,4 @@ def run2():
 
 if __name__=='__main__':
     run2()
+
