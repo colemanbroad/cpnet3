@@ -160,7 +160,8 @@ def pruneSingletonBranches(tb):
     ## we can just do this
     del tb.pts[node]
     del tb.parents[node]
-    tb.children[parent].remove(node) ## in-place
+    if parent is not None:
+      tb.children[parent].remove(node) ## in-place
     
     continue
 

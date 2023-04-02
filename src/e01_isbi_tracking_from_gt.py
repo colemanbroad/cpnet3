@@ -60,6 +60,7 @@ def computeScores(directory):
   aniso = isbi['voxelsize']
   dub = 100
   yp = nn_tracking(dtps=dtps, aniso=aniso, dub=dub)
+  addIsbiLabels(yp)
   pruneSingletonBranches(yp)
   # ipdb.set_trace()
   scores = compare_trackings(gt,yp,aniso,dub)
