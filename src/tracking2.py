@@ -8,6 +8,11 @@ from cpnet import load_isbi_csv
 import os
 import pickle
 
+import matplotlib.collections as mc
+
+import matplotlib.pyplot as plt
+from random import random
+
 from tifffile                  import imread
 import re
 from skimage.measure           import regionprops
@@ -20,58 +25,198 @@ from numpy import array, exp, zeros, maximum, indices
 def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
-## walk down the nodes starting at root and moving on to children
-def addIsbiLabels(tb):
 
-  children = dict()
-  for n,p in tb.parents.items():
-    if p is None: continue
-    children[p] = children.get(p, []) + [n]
+# Add the ISBI labeling `tb.toisbi` to the tracking. Create the labels by
+# forming a stack of unlabeled nodes and walking down the lineage tree depth
+# first.
+def addIsbiLabels2(tb):
   
-  ## ISBI Labels for each node by incrementing a global track_id
-  global_track_id = 1
-  ## dict that maps from existing node ID to Isbi ID
-  toisbi = dict()
+  # ISBI Labels for each node by incrementing a global track_id
+  currentmax = 1
+  # dict that maps from existing node ID to Isbi ID
+  labels = dict()
 
-  ## Find all tree roots
+  # Stack of unprocessed nodes. Initialize with all lineage tree roots.
   nodestack = [n for n,p in tb.parents.items() if p is None]
 
-  ## label each node in the tree; when cells divide, inc the global_track_id;
-  ## preorder traversal is 1. root, 2. left subtree, 3. right subtree
+  # Label each node in the tree. When we reach a cell division add both
+  # daughters to the nodestack and pop next node from stack.
   while len(nodestack)>0:
-    global_track_id += 1
+    currentmax += 1
     s = nodestack.pop()
 
     while True:
-      toisbi[s] = global_track_id
-      cs = children.get(s, None)
-      if cs is None: break ## ended with cell death or movie stop
+      labels[s] = currentmax
+      cs = tb.children.get(s, None)
+      if cs is None: break # ended with cell death or movie stop
 
       if len(cs)==1:
-        ## track continues
+        # track continues
         s = cs[0]
       elif len(cs)>1:
-        ## end with division
+        # end with division
         nodestack += cs
         break
   
-  tb.children = children
-  tb.toisbi = toisbi
+  tb.toisbi = labels
 
-## ltps: list of pts for each time
-## aniso: the pixel/voxel size (relative)
-## dub: distance upper bound for child-parent connections (in pixels)
-## When a node (time,label) has no parent we map it to (time-1, 0)
-## i.e. label zero serves as the background label
-## We use the index into ltps as the initial label, but convert
-## this label to the ISBI scheme for most processing
+# Add the ISBI labeling `tb.toisbi` to the tracking via a nested loop over
+# times and nodes[time]. The inverse `isbi2nodeset` makes it easy to find
+# short stubs in the lineage tree via 
+# 
+#           sorted(tb.isbi2nodeset.values(), key=lambda v: len(v))
+# 
+def addIsbiLabels(tb):
+  isbi2nodeset = dict()
+  labels = dict()
+  currentmax = 1
+  for t in tb.time2labelset.keys():
+    for idx in tb.time2labelset[t]:
+
+      node = (t,idx)
+      # if node has no parent or does have siblings: assign new ID. 
+      parent = tb.parents[node]
+      if parent is None or len(tb.children[parent])>1:
+        labels[node] = currentmax
+        isbi2nodeset[currentmax] = {node}
+        currentmax += 1
+        continue
+
+      # otherwise inherit ID from parent
+      labels[node] = labels[parent]
+      isbi2nodeset[labels[parent]] |= {node}
+
+  tb.toisbi = labels
+  tb.isbi2nodeset = isbi2nodeset
+
+# Classify all nodes into 'enter', 'exit', and 'move' and classify all links
+# into 'move' and 'divide'.
+def addNodeClassification(tb):
+
+  label2nodeset = dict(enter=set(), exit=set(), move=set())
+  labels = dict()
+  edge_label2nodeset = dict(move=set(), divide=set())
+  edge_labels = dict()
+
+  for t in tb.time2labelset.keys():
+    for idx in tb.time2labelset[t]:
+
+      node = (t,idx)
+      parent = tb.parents[node]
+      children = tb.children.get(node,None)
+
+      if parent is None:
+        # if node has no parent it's an enter
+        labels[node] = 'enter'
+        label2nodeset['enter'] |= {node}
+      elif children is None:
+        # if node has no children it's an exit
+        labels[node] = 'exit'
+        label2nodeset['exit'] |= {node}
+      else:
+        # otherwise it's a move
+        labels[node] = 'move'
+        label2nodeset['move'] |= {node}
+
+      if parent is None: continue
+
+      if len(tb.children[parent])==1:
+        # if node has no siblings it's link to parent is a movement
+        edge_labels[node] = 'move'
+        edge_label2nodeset['move'] |= {node}
+      else:
+        # otherwise it's got siblings and it's link to parent is a division
+        edge_labels[node] = 'divide'
+        edge_label2nodeset['divide'] |= {node}
+
+  tb.label2nodeset = label2nodeset
+  tb.labels = labels
+  tb.edge_label2nodeset = edge_label2nodeset
+  tb.edge_labels = edge_labels
+
+def remNodeClassification(tb):
+  del tb.label2nodeset
+  del tb.labels
+  del tb.edge_label2nodeset
+  del tb.edge_labels
+
+# Remove singleton branches which are usually false divisions.
+def pruneSingletonBranches(tb):
+
+  # Singleton branches have no children and either:
+  #  no parent. The node appears and then dies.
+  #  yes parent. The node is likely a false division resulting from FP detection.
+
+  for (k,ns) in tb.isbi2nodeset.items():
+    if len(ns) != 1: continue
+    node = list(ns)[0]
+    parent = tb.parents[node]
+    children = tb.children.get(node,None)
+
+    if children is not None:
+      # This is the one (rare) case where we DONT delete the node
+      continue
+
+    ## we can just do this
+    del tb.pts[node]
+    del tb.parents[node]
+    tb.children[parent].remove(node) ## in-place
+    
+    continue
+
+    ## if we want to try and fix the isbi labeling in place instead of 
+    ## regenerating it we can do this... Otherwise regen everything.
+    if len(tb.children[parent]) != 1: continue
+    
+    onlychild = list(tb.children[parent])[0]
+    child_label = tb.toisbi[onlychild]
+    parent_label = tb.toisbi[parent]
+    for n in tb.isbi2nodeset[child_label]:
+      tb.toisbi[n] = parent_label
+
+  ## now regenerate state
+
+  # del tb.edge_label2nodeset
+  # del tb.edge_labels
+  # del tb.label2nodeset
+  # del tb.labels  
+  # del tb.isbi2nodeset
+  # del tb.toisbi
+  # del tb.time2labelset
+  # del tb.times
+
+  conformTracking(tb)
+  addIsbiLabels(tb)
+
+  # With so many attributes holding state about the graph independently it
+  # feels awkward and error prone to change all this state. Alternative
+  # ideas are 
+  #   1. keep minimal state in tb, then regenerate extra items only
+  #      when needed (then discard them immediately).
+  #   2. Always check for node existence in single place e.g. `pts` before use.
+  #   3. keep track of tb.deadnodes
+  #   3. Enforce (2) by making nodes references... 
+  #   4. keep state around, but discard it once it becomes invalid! (del tb.pts)
+  #   5. 
+
+
+# ltps: list of pts for each time
+# aniso: the pixel/voxel size (relative)
+# dub: distance upper bound for child-parent connections (in pixels)
+# When a node (time,label) has no parent we map it to (time-1, 0)
+# i.e. label zero serves as the background label
+# We use the index into ltps as the initial label, but convert
+# this label to the ISBI scheme for most processing
 def nn_tracking(*,dtps,aniso=(1,1),dub=100):
   parents = dict()
   pts_dict = dict()
 
+  if type(dtps) is list:
+    dtps = {i:v for i,v in enumerate(dtps)}
+
   times = sorted(list(dtps.keys()))
 
-  ## put all the points in a big dictionary
+  # put all the points in a big dictionary
   for t,pts in dtps.items(): 
     for i,p in enumerate(pts):
       pts_dict[(t,i)] = p
@@ -82,13 +227,13 @@ def nn_tracking(*,dtps,aniso=(1,1),dub=100):
 
   # ipdb.set_trace()
 
-  ## for each pts(t) connect all the points to nearest neib
-  ## in the previous pts(t-1).
+  # for each pts(t) connect all the points to nearest neib
+  # in the previous pts(t-1).
   for t_idx in range(1,len(times)):
     t = times[t_idx]
     pts = dtps[t]
     t_prev = times[t_idx-1]
-    ## WARN: do we want t_idx-1 or t-1 ? t_idx-1 connects across many frames.
+    # WARN: do we want t_idx-1 or t-1 ? t_idx-1 connects across many frames.
     pts_prev = dtps[t_prev]
 
     kdt = KDTree(array(pts_prev)*aniso)
@@ -101,18 +246,18 @@ def nn_tracking(*,dtps,aniso=(1,1),dub=100):
   conformTracking(tb)
   return tb
 
-## Variant of cpnet.createTarget()
-## tb: TrueBranching
-## time: int
-## img_shape: tuple
-## sigmas: tuple of radii for label marker
+# Variant of cpnet.createTarget()
+# tb: TrueBranching
+# time: int
+# img_shape: tuple
+# sigmas: tuple of radii for label marker
 def createTargetWithTrackingLabels(tb, time, img_shape, sigmas):
   s  = array(sigmas).astype(float)
-  ks = floor(7*s).astype(int)   ## extend support to 7/2 sigma in every direc
-  ks = ks - ks%2 + 1            ## enfore ODD shape so kernel is centered! 
+  ks = floor(7*s).astype(int)   # extend support to 7/2 sigma in every direc
+  ks = ks - ks%2 + 1            # enfore ODD shape so kernel is centered! 
 
   # pts = array(pts).astype(int)
-  ## FIXME
+  # FIXME
   nodes = tb.time2labelset[time]
 
   # lab = array([l for n,l in tb.toisbi.items() if n[0]==time])
@@ -122,27 +267,27 @@ def createTargetWithTrackingLabels(tb, time, img_shape, sigmas):
 
   if len(pts)==0: return zeros(img_shape).astype(np.int64)
 
-  ## create a single kernel patch
+  # create a single kernel patch
   def f(x):
     x = x - (ks-1)/2
-    return (x*x/s/s).sum() <= 1 ## radius squared
+    return (x*x/s/s).sum() <= 1 # radius squared
     # return exp(-(x*x/s/s).sum()/2)
   kern = array([f(x) for x in indices(ks).reshape((len(ks),-1)).T]).reshape(ks)
     
-  target = zeros(ks + img_shape).astype(np.int64) ## include border padding
-  w = ks//2                      ## center coordinate of kernel
-  pts_offset = pts + w           ## offset by padding
+  target = zeros(ks + img_shape).astype(np.int64) # include border padding
+  w = ks//2                      # center coordinate of kernel
+  pts_offset = pts + w           # offset by padding
 
   for i,p in enumerate(pts_offset):
     target_slice = tuple(slice(a,b+1) for a,b in zip(p-w,p+w))
-    target[target_slice] = maximum(target[target_slice], kern*lab[i]) ## `maximum` puts labels on top of background (zero)
+    target[target_slice] = maximum(target[target_slice], kern*lab[i]) # `maximum` puts labels on top of background (zero)
 
   remove_pad = tuple(slice(a,a+b) for a,b in zip(w,img_shape))
   target = target[remove_pad]
 
   return target
 
-## draw tails on centerpoints to show cell motion
+# draw tails on centerpoints to show cell motion
 def createTailsWithTrackingLabels(tb, time, img_shape):
   imgbase = zeros(img_shape).astype(np.int64)
   if time==0: return imgbase
@@ -159,8 +304,8 @@ def createTailsWithTrackingLabels(tb, time, img_shape):
 
   return imgbase
 
-## Classic Bresenham Algorithm
-## Draw a line from pt -> par 
+# Classic Bresenham Algorithm
+# Draw a line from pt -> par 
 def drawLine(img,pt,par,color):
   x0,y0 = int(pt[0]), int(pt[1])
   x1,y1 = int(par[0]), int(par[1])
@@ -189,13 +334,13 @@ def drawLine(img,pt,par,color):
       y += sy
   img[x,y] = color
 
-## directory: path of e.g. 01_GT/TRA/
+# directory: path of e.g. 01_GT/TRA/
 def loadISBITrackingFromDisk(directory):
-  ## WARN: must cast to int explicitly, because type(np.uint + int) is numpy.float64 !
+  # WARN: must cast to int explicitly, because type(np.uint + int) is numpy.float64 !
   lbep = np.loadtxt(directory + '/man_track.txt').astype(int)
   if lbep.ndim == 1: lbep = lbep.reshape([1,4])
 
-  ## Filter to remove mistakes in man_track.txt
+  # Filter to remove mistakes in man_track.txt
   lbep_filtered = []
   for l,b,e,p in lbep:
     if not b<=e:
@@ -215,12 +360,12 @@ def loadISBITrackingFromDisk(directory):
   parent = dict()
   for l,b,e,p in lbep:
 
-    ## add the node to TB the first time it appears
-    ## WARNING: Can't simply use b-1 for parent time! There can be gaps in tracks.
+    # add the node to TB the first time it appears
+    # WARNING: Can't simply use b-1 for parent time! There can be gaps in tracks.
     parent[(b,l)] = (mantrackdict[p].e , p) if p!=0 else None #(b-1,p)
     # if (b-1,p) in {(70, 56), (76, 41)}: ipdb.set_trace()
 
-    ## for all subsequent times we know the "parent" node exists
+    # for all subsequent times we know the "parent" node exists
     for time in range(b+1, e+1):
       parent[(time,l)] = (time-1,l)
 
@@ -228,21 +373,18 @@ def loadISBITrackingFromDisk(directory):
   conformTracking(tb)
   return tb
 
-## draw the nodes with compressed spatial + time axis
-def drawLineageTree(tb):
-  # find clusters of nodes that are a part of the same family tree
-  # they should be drawn together
-  # nodestack = [n for n,p in tb.parents.items() if p is None]
-  # clusters = []
+# Plot the lineage tree nodes and links. Use a compressed spatial axis on the
+# horizontal and time moves vertically from top to bottom. 
+def drawLineageTree(tb, node2label):
 
-  ## nodes sorted by position on x axis
+  # nodes sorted by position on x axis
   nodes = [x[0] for x in sorted([[k,*v] for k,v in tb.pts.items() if tb.parents[k] is None], key=lambda x: x[-1])]
 
   cmap = np.random.rand(256,3).clip(min=0.2)
   cmap[0] = (0,0,0)
   cmap = matplotlib.colors.ListedColormap(cmap)
 
-  ## map labels to colors
+  # map labels to colors
   def l2c(label):
     if label==0:
       return cmap(0)
@@ -250,30 +392,29 @@ def drawLineageTree(tb):
       return cmap(label % 254 + 1)
 
   plt.figure()
-  import matplotlib.collections as mc
   linecollection = mc.LineCollection([], colors='k', linewidths=2)
-  # fig, ax = pl.subplots()
   plt.gca().add_collection(linecollection)
-
   lines = []
 
-  # starting x positions are equally spaced on the x axis
+  # Starting x positions are equally spaced on the X axis. An initial spacing
+  # of 3 allow for multiple division before children begin to overlap.
   xpos = {n:3*i for i,n in enumerate(nodes)}
 
-  # as we move through the child nodes we plot them with y positions 
-  # given by time and x positions equal to their parents + some random factor
+  # As we move through the child nodes we plot them with y positions 
+  # given by time and x positions equal to their parents.
   while len(nodes) > 0:
 
     times = [n[0] for n in nodes]
     xs = [xpos[n] for n in nodes]
-    color = [l2c(tb.toisbi[n]) for n in nodes]
+    color = [l2c(node2label[n]) for n in nodes]
 
     plt.scatter(xs,times,c=color)
 
-    # replace nodes with children. if multiple children, then offset them
-    # slightly from parent x position with a random value
-    _nodes = [] 
-    for i,n in enumerate(nodes): 
+    # After plotting we replace the list of nodes with all of their children.
+    # If there are multiple children, then offset them (asymmetrically) from
+    # parent X position.
+    _nodes = []
+    for i,n in enumerate(nodes):
       cs = tb.children.get(n, [])
       _nodes += cs
       if len(cs)==1:
@@ -294,11 +435,8 @@ def drawLineageTree(tb):
   plt.gca().invert_yaxis()
   plt.show()
 
-import matplotlib.pyplot as plt
-from random import random
-
-## Add time2labelset and assert that all the nodes
-## have an associated spatial point.
+# Add time2labelset and assert that all the nodes
+# have an associated spatial point.
 def conformTracking(tb):
   d = dict()
   for time,label in tb.pts.keys():
@@ -306,74 +444,28 @@ def conformTracking(tb):
   tb.time2labelset = d
   tb.times = sorted(list(tb.time2labelset.keys()))
 
+  # invert parents to get list of children
+  tb.children = dict()
+  for n,p in tb.parents.items():
+    if p is None: continue
+    tb.children[p] = tb.children.get(p, []) + [n]
+
   assert tb.pts.keys() == tb.parents.keys()
   pk = tb.parents.keys()
   # pv = {v for v in tb.parents.values() if v[0]!=-1 and v[1]!=0}
   pv = {v for v in tb.parents.values() if v is not None}
   assert pv-pk==set()
 
-def evalNNTrackingOnIsbiGTDirectory(directory):
-  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-  isbi = load_isbi_csv(isbiname)
-  # directory = "data-isbi/DIC-C2DH-HeLa/01_GT/TRA/"
-  gt = loadISBITrackingFromDisk(directory)
-  dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
-  # aniso = [1,1] if '2D' in directory else [1,1,1]
-  aniso = isbi['voxelsize']
-  dub = 100
-  yp = nn_tracking(dtps=dtps, aniso=aniso, dub=dub)
-  # ipdb.set_trace()
-  scores = compare_trackings(gt,yp,aniso,dub)
-  return {(isbiname, dataset) : scores}
-
-def evalAllDirs():
-  res = dict()
-  # for dire in glob("../data-isbi/*/*_GT/TRA/"):
-
-  base = path.normpath("../cpnet-out/")
-  for directory in sorted(glob("/projects/project-broaddus/rawdata/isbi_train/*/*_GT/TRA/")):
-    print(directory)
-    isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-    outdir = path.join(base, isbiname, dataset, 'track-analysis')
-    os.makedirs(outdir, exist_ok=True)
-    # ipdb.set_trace()
-
-    try:
-      assert False
-      d = pickle.load(open(outdir + '/compare_results-aniso.pkl','rb'))
-      if len(d)==0:
-        print("Empty Data!")
-        assert False
-      # pickle.dump(d, open(outdir + '/compare_results-aniso.pkl','wb'))
-      # os.remove(directory + '/compare_results-aniso.pkl')
-    except:
-      d = evalNNTrackingOnIsbiGTDirectory(directory)
-      pickle.dump(d, open(outdir + '/compare_results-aniso.pkl','wb'))
-
-    res.update(d)
-  return res
-
-def formatres(res):
-  lines = []
-  for k,v in res.items():
-    d = dict(name=k[0], dset=k[1][:2])
-    d.update({'node-'+k2:v2 for k2,v2 in v.node.__dict__.items()})
-    d.update({'edge-'+k2:v2 for k2,v2 in v.edge.__dict__.items()})
-    lines.append(d)
-
-  print(tabulate(lines, headers='keys'))
-  return lines
-
-## Adds `time2labelset` to gt and yp.
-## Returns global set similarity scores for nodes and edges
-## across the entire timeseries
+# Adds `time2labelset` to gt and yp.
+# Returns global set similarity scores for nodes and edges
+# across the entire timeseries
 def compare_trackings(gt,yp,aniso,dub):
 
   times = sorted(list(gt.time2labelset.keys() | yp.time2labelset.keys()))
   
-  ## maybe find point matches should work with maps instead of arrays...
-  ## the default should be that we pass around unique id's for pts... i.e. label, (time,label), (gt,time,label), etc
-  ## an index into a dense array must always be mapped to/from. is always arbitrary. but sometimes all we have!
+  # maybe find point matches should work with maps instead of arrays...
+  # the default should be that we pass around unique id's for pts... i.e. label, (time,label), (gt,time,label), etc
+  # an index into a dense array must always be mapped to/from. is always arbitrary. but sometimes all we have!
   def f(t):
     _gt = {(t,l):gt.pts[(t,l)] for l in gt.time2labelset[t]}
     _yp = {(t,l):yp.pts[(t,l)] for l in yp.time2labelset[t]}
@@ -381,7 +473,7 @@ def compare_trackings(gt,yp,aniso,dub):
     return snnMatch(_gt, _yp, dub=dub, scale=aniso)
   node_matches = {t:f(t) for t in times}
 
-  ## TODO: do more with the scores for all timepoints
+  # TODO: do more with the scores for all timepoints
 
   node_totals = build_scores(
     n_m  = sum([x.n_matched for x in node_matches.values()]),
@@ -389,11 +481,11 @@ def compare_trackings(gt,yp,aniso,dub):
     n_gt = sum([x.n_gt for x in node_matches.values()]),
     )
 
-  ## count edges. if parent label == 0 => cell appearance
+  # count edges. if parent label == 0 => cell appearance
   n_edges_gt = len([v for v in gt.parents.values() if v != None])
   n_edges_yp = len([v for v in yp.parents.values() if v != None])
 
-  ## Now we find matching edges by going pt -> parent -> match == pt -> match -> parent (it's a commutative diagram)
+  # Now we find matching edges by going pt -> parent -> match == pt -> match -> parent (it's a commutative diagram)
   edge_matches = dict()
   # gt_edges_nomatch = set()
   for t in times[1:]:
@@ -404,7 +496,7 @@ def compare_trackings(gt,yp,aniso,dub):
       if p1 is None or p2 is None:
         continue
 
-      ## WARN: use p1[0] instead of i-1 because of gaps in tracks!
+      # WARN: use p1[0] instead of i-1 because of gaps in tracks!
       if node_matches[p1[0]].matches.get(p1,None)==p2:
         edge_matches[frozenset({p1,n1})] = frozenset({p2,n2})
 
@@ -416,6 +508,9 @@ def compare_trackings(gt,yp,aniso,dub):
   edge_totals = build_scores(n_m=len(edge_matches), n_p=n_edges_yp, n_gt=n_edges_gt)
 
   return SN(node=node_totals, edge=edge_totals)
+
+
+
 
 
 
