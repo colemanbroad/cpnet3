@@ -67,7 +67,7 @@ def addIsbiLabels2(tb):
 #           sorted(tb.isbi2nodeset.values(), key=lambda v: len(v))
 # 
 def addIsbiLabels(tb):
-  isbi2nodeset = dict()
+
   labels = dict()
   currentmax = 1
   for t in tb.time2labelset.keys():
@@ -78,24 +78,22 @@ def addIsbiLabels(tb):
       parent = tb.parents[node]
       if parent is None or len(tb.children[parent])>1:
         labels[node] = currentmax
-        isbi2nodeset[currentmax] = {node}
+
         currentmax += 1
         continue
 
       # otherwise inherit ID from parent
       labels[node] = labels[parent]
-      isbi2nodeset[labels[parent]] |= {node}
+
 
   tb.toisbi = labels
-  tb.isbi2nodeset = isbi2nodeset
+
 
 # Classify all nodes into 'enter', 'exit', and 'move' and classify all links
 # into 'move' and 'divide'.
 def addNodeClassification(tb):
 
-  label2nodeset = dict(enter=set(), exit=set(), move=set())
   labels = dict()
-  edge_label2nodeset = dict(move=set(), divide=set())
   edge_labels = dict()
 
   for t in tb.time2labelset.keys():
@@ -108,46 +106,48 @@ def addNodeClassification(tb):
       if parent is None:
         # if node has no parent it's an enter
         labels[node] = 'enter'
-        label2nodeset['enter'] |= {node}
       elif children is None:
         # if node has no children it's an exit
         labels[node] = 'exit'
-        label2nodeset['exit'] |= {node}
       else:
         # otherwise it's a move
         labels[node] = 'move'
-        label2nodeset['move'] |= {node}
 
       if parent is None: continue
 
       if len(tb.children[parent])==1:
         # if node has no siblings it's link to parent is a movement
         edge_labels[node] = 'move'
-        edge_label2nodeset['move'] |= {node}
       else:
         # otherwise it's got siblings and it's link to parent is a division
         edge_labels[node] = 'divide'
-        edge_label2nodeset['divide'] |= {node}
 
-  tb.label2nodeset = label2nodeset
   tb.labels = labels
-  tb.edge_label2nodeset = edge_label2nodeset
   tb.edge_labels = edge_labels
 
 def remNodeClassification(tb):
-  del tb.label2nodeset
   del tb.labels
-  del tb.edge_label2nodeset
   del tb.edge_labels
+
+
+from collections import defaultdict
+
+def groupby(dikt):
+  inverse = defaultdict(set)
+  for key,val in dikt.items():
+    inverse[val].add(key)
+  return inverse
 
 # Remove singleton branches which are usually false divisions.
 def pruneSingletonBranches(tb):
 
+  ## groupby toisbi
+  isbi2nodeset = groupby(tb.toisbi)
+
   # Singleton branches have no children and either:
   #  no parent. The node appears and then dies.
   #  yes parent. The node is likely a false division resulting from FP detection.
-
-  for (k,ns) in tb.isbi2nodeset.items():
+  for (k,ns) in isbi2nodeset.items():
     if len(ns) != 1: continue
     node = list(ns)[0]
     parent = tb.parents[node]
@@ -172,19 +172,8 @@ def pruneSingletonBranches(tb):
     onlychild = list(tb.children[parent])[0]
     child_label = tb.toisbi[onlychild]
     parent_label = tb.toisbi[parent]
-    for n in tb.isbi2nodeset[child_label]:
+    for n in isbi2nodeset[child_label]:
       tb.toisbi[n] = parent_label
-
-  ## now regenerate state
-
-  # del tb.edge_label2nodeset
-  # del tb.edge_labels
-  # del tb.label2nodeset
-  # del tb.labels  
-  # del tb.isbi2nodeset
-  # del tb.toisbi
-  # del tb.time2labelset
-  # del tb.times
 
   conformTracking(tb)
   addIsbiLabels(tb)
@@ -199,7 +188,6 @@ def pruneSingletonBranches(tb):
   #   3. Enforce (2) by making nodes references... 
   #   4. keep state around, but discard it once it becomes invalid! (del tb.pts)
   #   5. 
-
 
 # ltps: list of pts for each time
 # aniso: the pixel/voxel size (relative)
@@ -460,9 +448,13 @@ def conformTracking(tb):
 # Adds `time2labelset` to gt and yp.
 # Returns global set similarity scores for nodes and edges
 # across the entire timeseries
-def compare_trackings(gt,yp,aniso,dub):
+def compare_trackings(gt,yp,aniso,dub,byclass=True):
 
   times = sorted(list(gt.time2labelset.keys() | yp.time2labelset.keys()))
+
+  if byclass:
+    addNodeClassification(gt)
+    addNodeClassification(yp)
   
   # maybe find point matches should work with maps instead of arrays...
   # the default should be that we pass around unique id's for pts... i.e. label, (time,label), (gt,time,label), etc
@@ -473,6 +465,29 @@ def compare_trackings(gt,yp,aniso,dub):
     # ipdb.set_trace()
     return snnMatch(_gt, _yp, dub=dub, scale=aniso)
   node_matches = {t:f(t) for t in times}
+
+
+  ## match by class
+  if byclass:
+    res = defaultdict(lambda : 0)
+    c2i = {'enter':0, 'move':1, 'exit':2, 'miss':3}
+    res = np.zeros([4,4], dtype=np.uint32)
+    yp_mset = set()
+    for gt_node in gt.pts.keys():
+      gt_class = gt.labels[gt_node]
+      time = gt_node[0]
+      yp_node = node_matches[time].matches.get(gt_node, None)
+      if yp_node: yp_mset.add(yp_node)
+      yp_class = yp.labels.get(yp_node, 'miss')
+      res[ c2i[yp_class] , c2i[gt_class] ] += 1
+    for gt_node in yp.pts.keys() - yp_mset:
+      res[ c2i[yp.labels[gt_node]] , c2i['miss'] ] += 1
+    # ipdb.set_trace()
+    print("Row (dim 0 / slow): YP, Col (dim 1 / fast): GT")
+    print(c2i)
+    # res[3,2]=999
+    print(res)
+
 
   # TODO: do more with the scores for all timepoints
 
@@ -499,7 +514,8 @@ def compare_trackings(gt,yp,aniso,dub):
 
       # WARN: use p1[0] instead of i-1 because of gaps in tracks!
       if node_matches[p1[0]].matches.get(p1,None)==p2:
-        edge_matches[frozenset({p1,n1})] = frozenset({p2,n2})
+        # edge_matches[frozenset({p1,n1})] = frozenset({p2,n2})
+        edge_matches[(n1,p1)] = (n2,p2)
 
       # else:
       #   print(f"No matching parents {n1}->{p1} != {n2}->{p2}")
@@ -507,6 +523,43 @@ def compare_trackings(gt,yp,aniso,dub):
       #   gt_edges_nomatch |= {frozenset({p1,n1})}
 
   edge_totals = build_scores(n_m=len(edge_matches), n_p=n_edges_yp, n_gt=n_edges_gt)
+
+  ## match by class on edges
+  if byclass:
+    res = defaultdict(lambda : 0)
+    c2i = {'move':0, 'divide':1, 'miss':2,}
+    res = np.zeros([3,3], dtype=np.uint32)
+    yp_mset = set()
+    # for every edge in the ground truth tracking
+    for (n1,p1) in gt.parents.items():
+      if p1 is None: continue
+      # get it's label
+      gt_class = gt.edge_labels[n1]
+      # and it's match - if it exists
+      yp_edge = edge_matches.get((n1,p1), None)
+      # if it does exist add it to the matched set
+      # NOTE: must be in n1,p1 order to match with yp.parents.items()
+      if yp_edge: 
+        yp_mset.add(yp_edge)
+        # check that edge is in (child,parent) form
+        assert yp_edge[0][0] > yp_edge[1][0]
+        yp_class = yp.edge_labels[yp_edge[0]]
+      else:
+        ## miss if yp_node is none
+        yp_class = 'miss'
+      # and add the (yp_class, gt_class) pair to the matrix
+      res[ c2i[yp_class] , c2i[gt_class] ] += 1
+    # ipdb.set_trace()
+    for (n1,p1) in set(yp.parents.items()) - yp_mset:
+      if p1 is None: continue
+      res[ c2i[yp.edge_labels[n1]] , c2i['miss'] ] += 1
+    # ipdb.set_trace()
+    print("Row (dim 0 / slow): YP, Col (dim 1 / fast): GT")
+    print(c2i)
+    # res[3,2]=999
+    print(res)
+
+
 
   return SN(node=node_totals, edge=edge_totals)
 
