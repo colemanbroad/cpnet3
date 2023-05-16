@@ -340,7 +340,7 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
   savedir = os.path.join(localinfo.local_base, "cpnet-out/", isbiname)
   savedir = Path(savedir)
   savedir.mkdir(parents=True,exist_ok=True)
-  base = os.path.join(localinfo.local_base, 'data-isbi/', isbiname)
+  base = os.path.join(localinfo.local_base, 'data-raw/', isbiname)
   base = Path(base)
 
   # np.random uses:
@@ -806,7 +806,7 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.nn_tracking(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
+  tb = tracking2.link_nearestNeib(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
   tracking2.addIsbiLabels(tb)
 
   ## Draw a graph of the cell lineage tree with nodes colored

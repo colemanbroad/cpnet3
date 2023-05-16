@@ -59,7 +59,7 @@ def snnMatch(gt__pt,yp__pt,dub=10,scale=[1,1,1]):
   res.matches = matching
   return res
 
-def build_scores(*,n_m, n_p, n_gt):
+def build_scores(*,n_m, n_p, n_gt, return_dict=False):
 
   if n_p==0 or n_gt==0:
     return SimpleNamespace(n_matched=0, n_proposed=n_p, n_gt=n_gt, precision=0, f1=0, recall=0)
@@ -71,5 +71,6 @@ def build_scores(*,n_m, n_p, n_gt):
   res.precision  = n_m / n_p
   res.recall     = n_m / n_gt
   res.f1         = 2*n_m / (n_p + n_gt)
+  if return_dict: return res.__dict__
   return res
 

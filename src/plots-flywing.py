@@ -88,7 +88,7 @@ def plotHistory(isbiname):
   # plt.show()
   # y = input("'y' to save: ")
   # if y=='y': 
-  plt.savefig(f"plots/history_{isbiname}.pdf")
+  plt.savefig(f"results/plots/history_{isbiname}.pdf")
   plt.close()
 
 ## timeseries of single metric for all datasets.
@@ -127,7 +127,7 @@ def plotAllHistories(metric = 'f1'):
   plt.gcf().set_size_inches(6.4,9.46)
   # plt.tight_layout()
   # plt.show()
-  plt.savefig(f"plots/allHistories_{metric}.pdf")
+  plt.savefig(f"results/plots/allHistories_{metric}.pdf")
   plt.close()
 
 ## scatterplot of f1 scores
@@ -162,7 +162,7 @@ def plotMetrics():
   # plt.show()
   # input()
   # ipdb.set_trace()
-  plt.savefig("plots/precision-recall.pdf")
+  plt.savefig("results/plots/precision-recall.pdf")
 
 
 badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']

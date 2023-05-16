@@ -8,8 +8,10 @@ from cpnet import load_isbi_csv
 import os
 import pickle
 
+from collections import defaultdict
+from numba import jit
+from scipy.optimize import linear_sum_assignment
 import matplotlib.collections as mc
-
 import matplotlib.pyplot as plt
 from random import random
 
@@ -21,7 +23,7 @@ from tabulate import tabulate
 
 from glob import glob
 
-from numpy import array, exp, zeros, maximum, indices
+from numpy import array, exp, zeros, maximum, indices, any, all
 def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
@@ -129,9 +131,6 @@ def remNodeClassification(tb):
   del tb.labels
   del tb.edge_labels
 
-
-from collections import defaultdict
-
 def groupby(dikt):
   inverse = defaultdict(set)
   for key,val in dikt.items():
@@ -189,6 +188,17 @@ def pruneSingletonBranches(tb):
   #   4. keep state around, but discard it once it becomes invalid! (del tb.pts)
   #   5. 
 
+# # Compensate for drift by 
+# def 
+
+# from numba import jit, prange
+# @jit(nopython=True, fastmath=True, nogil=True, cache=True, parallel=True)
+# def interpolate_bilinear(array_in, width_in, height_in, array_out, width_out, height_out):
+#     for i in prange(height_out):
+#         for j in prange(width_out):
+
+
+
 # ltps: list of pts for each time
 # aniso: the pixel/voxel size (relative)
 # dub: distance upper bound for child-parent connections (in pixels)
@@ -196,7 +206,7 @@ def pruneSingletonBranches(tb):
 # i.e. label zero serves as the background label
 # We use the index into ltps as the initial label, but convert
 # this label to the ISBI scheme for most processing
-def nn_tracking(*,dtps,aniso=(1,1),dub=100):
+def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   parents = dict()
   pts_dict = dict()
 
@@ -212,9 +222,6 @@ def nn_tracking(*,dtps,aniso=(1,1),dub=100):
 
   t0 = times[0]
   for idx, _ in enumerate(dtps[t0]): parents[(t0,idx)] = None
-
-
-  # ipdb.set_trace()
 
   # for each pts(t) connect all the points to nearest neib
   # in the previous pts(t-1).
@@ -234,6 +241,129 @@ def nn_tracking(*,dtps,aniso=(1,1),dub=100):
   tb = SN(parents=parents, pts=pts_dict)
   conformTracking(tb)
   return tb
+
+
+# Minimum Euclidean Distance Tracking with max-two-daughters constraint.
+# 140ms (20ms) for 100 x 100 pts (@jit)
+# 17s (7.2s) for 1000 pts (@jit) and
+@jit(nopython=True)
+def greedyMinCostAssignment(costs, max_children=2):
+
+  # determine edges by greedily minimizing costs
+  N,M = costs.shape
+  edges = np.zeros((N,M),dtype=np.uint8)
+  while True:
+    min_cost = costs.min()
+    min_idx  = costs.argmin()
+    p,c = min_idx//M, min_idx%M # [p]arent, [c]hild
+
+    # if the lowest cost is infinite, break
+    if min_cost==np.inf: break
+
+    # if every child has a parent, break
+    if all(edges.sum(0)==1): break
+
+    # If the parent has 0 or 1 daughter, add (p,c) to edge set. Otherwise set
+    # this parent's edge costs to inf.
+    if (edges[p].sum() < max_children):
+      edges[p,c]=1
+      costs[:,c]=np.inf
+    else:
+      costs[p,:]=np.inf
+
+  assert all(edges.sum(0) <= 1)
+
+  return edges
+
+@jit(nopython=True)
+def costmatrix(pts0, pts1, dub=100):
+  N,M = len(pts0),len(pts1)
+  costs = np.zeros((N,M),np.float32)
+  for j in range(N):
+    for k in range(M):
+      dist = np.linalg.norm(pts0[j]-pts1[k], ord=2)
+      costs[j,k] = dist if dist < dub else 100
+  return costs
+
+# We can use arbitrary costs, not just euclidean distance.
+# Track by greedily choosing assignments that minimize those costs
+# without violating the max-two-daughters constraint.
+def link_minCostAssign(*,dtps,aniso=(1,1),dub=100, greedy=True):
+  parents = dict()
+  pts_dict = dict()
+
+  if type(dtps) is list:
+    dtps = {i:v for i,v in enumerate(dtps)}
+
+  times = sorted(list(dtps.keys()))
+
+  # put all the points in a big dictionary
+  for t,pts in dtps.items():
+    for i,p in enumerate(pts):
+      pts_dict[(t,i)] = p
+
+  # now rescale the points for tracking
+  for k,v in dtps.items():
+    dtps[k] = array(v) * aniso
+
+  t0 = times[0]
+  for idx, _ in enumerate(dtps[t0]): parents[(t0,idx)] = None
+
+  for i in range(1, len(times)):
+    t0 = times[i-1]
+    t1 = times[i]
+    pts0 = dtps[t0].astype(np.float32)
+    pts1 = dtps[t1].astype(np.float32)
+    N,M = len(pts0),len(pts1)
+
+    if M==0: continue
+    if N==0:
+      for i,_ in enumerate(pts1):
+        parents[(t1,i)] = None
+      continue
+
+    costs = costmatrix(pts0,pts1,dub=dub)
+
+    if greedy:
+      edges = greedyMinCostAssignment(costs, max_children=2)
+    else:
+      # duplicate the cost matrix along the row axis, to there are two copies
+      # of every parent node. This allows matching to a parent node twice by
+      # matching to it's copy. We make the matrix square by extending the cols
+      # (child axis) with dummy variables until it has the same size as rows.
+
+      costs = np.concatenate([costs,costs],axis=0)
+      if 2*N-M > 0:
+        # add dummy division variables 
+        dummy = np.zeros([2*N, 2*N - M]) + 100
+        costs = np.concatenate([costs,dummy],axis=1)
+      else:
+        # we have more than twice pts in t1 as t0! need dummy entrance pts.
+        # dummy entrance cost is 100
+        dummy = np.zeros([M-2*N, M]) + 100
+        costs = np.concatenate([costs,dummy],axis=0)
+
+
+
+      row_ind, col_ind = linear_sum_assignment(costs, maximize=False)
+      edges = np.zeros([N,M], dtype=np.uint8)
+      for r,c in zip(row_ind,col_ind):
+        if c>=M: continue
+        ## mod M 
+        edges[r%N,c] = 1
+
+    parent_id_list = edges.argmax(0)
+    for child_id,parent_id in enumerate(parent_id_list):
+      parents[(t1,child_id)] = (t0,parent_id)
+
+  tb = SN(parents=parents, pts=pts_dict)
+  conformTracking(tb)
+
+  return tb
+
+
+
+
 
 # Variant of cpnet.createTarget()
 # tb: TrueBranching
@@ -450,15 +580,19 @@ def conformTracking(tb):
 # across the entire timeseries
 def compare_trackings(gt,yp,aniso,dub,byclass=True):
 
+  res = dict() ## store results
+
   times = sorted(list(gt.time2labelset.keys() | yp.time2labelset.keys()))
 
   if byclass:
     addNodeClassification(gt)
     addNodeClassification(yp)
   
-  # maybe find point matches should work with maps instead of arrays...
-  # the default should be that we pass around unique id's for pts... i.e. label, (time,label), (gt,time,label), etc
-  # an index into a dense array must always be mapped to/from. is always arbitrary. but sometimes all we have!
+  # maybe find point matches should work with maps instead of arrays... the
+  # default should be that we pass around unique id's for pts... i.e. label,
+  # (time,label), (gt,time,label), etc an index into a dense array must
+  # always be mapped to/from. is always arbitrary. but sometimes all we
+  # have!
   def f(t):
     _gt = {(t,l):gt.pts[(t,l)] for l in gt.time2labelset[t]}
     _yp = {(t,l):yp.pts[(t,l)] for l in yp.time2labelset[t]}
@@ -466,12 +600,19 @@ def compare_trackings(gt,yp,aniso,dub,byclass=True):
     return snnMatch(_gt, _yp, dub=dub, scale=aniso)
   node_matches = {t:f(t) for t in times}
 
+  node_totals = build_scores(
+    n_m  = sum([x.n_matched for x in node_matches.values()]),
+    n_p  = sum([x.n_proposed for x in node_matches.values()]),
+    n_gt = sum([x.n_gt for x in node_matches.values()]),
+    return_dict=True,
+    )
+  res['node'] = node_totals
 
   ## match by class
   if byclass:
-    res = defaultdict(lambda : 0)
+    # node_confusion = defaultdict(lambda : 0)
     c2i = {'enter':0, 'move':1, 'exit':2, 'miss':3}
-    res = np.zeros([4,4], dtype=np.uint32)
+    node_confusion = np.zeros([4,4], dtype=np.uint32)
     yp_mset = set()
     for gt_node in gt.pts.keys():
       gt_class = gt.labels[gt_node]
@@ -479,56 +620,94 @@ def compare_trackings(gt,yp,aniso,dub,byclass=True):
       yp_node = node_matches[time].matches.get(gt_node, None)
       if yp_node: yp_mset.add(yp_node)
       yp_class = yp.labels.get(yp_node, 'miss')
-      res[ c2i[yp_class] , c2i[gt_class] ] += 1
+      node_confusion[ c2i[yp_class] , c2i[gt_class] ] += 1
     for gt_node in yp.pts.keys() - yp_mset:
-      res[ c2i[yp.labels[gt_node]] , c2i['miss'] ] += 1
+      node_confusion[ c2i[yp.labels[gt_node]] , c2i['miss'] ] += 1
+
+    res['node_confusion'] = node_confusion
+
     # ipdb.set_trace()
-    print("Row (dim 0 / slow): YP, Col (dim 1 / fast): GT")
-    print(c2i)
-    # res[3,2]=999
-    print(res)
-
-
-  # TODO: do more with the scores for all timepoints
-
-  node_totals = build_scores(
-    n_m  = sum([x.n_matched for x in node_matches.values()]),
-    n_p  = sum([x.n_proposed for x in node_matches.values()]),
-    n_gt = sum([x.n_gt for x in node_matches.values()]),
-    )
+    # print("Row (dim 0 / slow): YP, Col (dim 1 / fast): GT")
+    # print(c2i)
+    # node_confusion[3,2]=999
+    # print("Nodes")
+    # print(node_confusion)
 
   # count edges. if parent label == 0 => cell appearance
   n_edges_gt = len([v for v in gt.parents.values() if v != None])
   n_edges_yp = len([v for v in yp.parents.values() if v != None])
 
-  # Now we find matching edges by going pt -> parent -> match == pt -> match -> parent (it's a commutative diagram)
+  # Now we find matching edges by going pt -> parent -> match == pt ->
+  # match -> parent (it's a commutative diagram)
+
+  # But we also have to find all the edges! How are we going to do this in a
+  # single pass? We can split the nodes up into yp-matched_yp, matched_yp,
+  # gt-matched_gt and then count the number of nodes with parents in
+  # unmatched yp and gt nodesets, then count the number of matched nodes with
+  # matched parents.
+
+  # See fig1
+
+  #   return dict(**locals())
+  # def next(D):
+  #   globals().update(D)
+
   edge_matches = dict()
-  # gt_edges_nomatch = set()
+  edgecounts = dict()
   for t in times[1:]:
-    for n1,n2 in node_matches[t].matches.items():
+    counts = SN(tp=0,yp=0,gt=0)
+
+    yp_edges = dict()
+    for k in yp.time2labelset[t]:
+      n1 = (t,k)
+      p1 = yp.parents[n1]
+      if p1 is None: continue
+      yp_edges[n1] = (n1,p1)
+
+    gt_edges = dict()
+    for k in gt.time2labelset[t]:
+      n1 = (t,k)
       p1 = gt.parents[n1]
-      p2 = yp.parents[n2]
+      if p1 is None: continue
+      gt_edges[n1] = (n1,p1)
+    
+    counts.yp = len(yp_edges)
+    counts.gt = len(gt_edges)
+
+    # figure out if the n1->n2->p2->p1 forms a full cycle (undirected)
+    for n1,p1 in gt_edges.values():
+      n2 = node_matches[t].matches.get(n1, None)
+      if n2 is None: continue
+      n2p2 = yp_edges.get(n2,None)
+      if n2p2 is None: continue
+      p2 = n2p2[1]
       # ipdb.set_trace()
-      if p1 is None or p2 is None:
-        continue
+      if node_matches[p1[0]].matches.get(p1) != p2: continue
+      # if p1 != p2: continue
+      edge_matches[(n1,p1)] = (n2,p2)
+      counts.tp += 1
 
-      # WARN: use p1[0] instead of i-1 because of gaps in tracks!
-      if node_matches[p1[0]].matches.get(p1,None)==p2:
-        # edge_matches[frozenset({p1,n1})] = frozenset({p2,n2})
-        edge_matches[(n1,p1)] = (n2,p2)
+    # if counts.yp > 20:
 
-      # else:
-      #   print(f"No matching parents {n1}->{p1} != {n2}->{p2}")
-      #   # ipdb.set_trace()
-      #   gt_edges_nomatch |= {frozenset({p1,n1})}
+    edgecounts[t] = counts
 
-  edge_totals = build_scores(n_m=len(edge_matches), n_p=n_edges_yp, n_gt=n_edges_gt)
+  edge_totals = build_scores(
+    n_m=len(edge_matches), n_p=n_edges_yp, n_gt=n_edges_gt,
+    return_dict=True)
+  res['edge'] = edge_totals
+
+  # To compute the edge scores by time we need to partition the edges by time
+  # and count the number of matches (TP), FP and FN.
+  res['edge_by_time'] = {
+    t : build_scores(n_m=counts.tp, n_p=counts.yp, n_gt=counts.gt)
+    for t,counts in edgecounts.items()
+  }
 
   ## match by class on edges
   if byclass:
-    res = defaultdict(lambda : 0)
+    # edge_confusion = defaultdict(lambda : 0)
     c2i = {'move':0, 'divide':1, 'miss':2,}
-    res = np.zeros([3,3], dtype=np.uint32)
+    edge_confusion = np.zeros([3,3], dtype=np.uint32)
     yp_mset = set()
     # for every edge in the ground truth tracking
     for (n1,p1) in gt.parents.items():
@@ -548,20 +727,22 @@ def compare_trackings(gt,yp,aniso,dub,byclass=True):
         ## miss if yp_node is none
         yp_class = 'miss'
       # and add the (yp_class, gt_class) pair to the matrix
-      res[ c2i[yp_class] , c2i[gt_class] ] += 1
-    # ipdb.set_trace()
+      edge_confusion[ c2i[yp_class] , c2i[gt_class] ] += 1
+
     for (n1,p1) in set(yp.parents.items()) - yp_mset:
       if p1 is None: continue
-      res[ c2i[yp.edge_labels[n1]] , c2i['miss'] ] += 1
-    # ipdb.set_trace()
-    print("Row (dim 0 / slow): YP, Col (dim 1 / fast): GT")
-    print(c2i)
-    # res[3,2]=999
-    print(res)
+      edge_confusion[ c2i[yp.edge_labels[n1]] , c2i['miss'] ] += 1
 
+    res['edge_confusion'] = edge_confusion
 
+  # for v in node_matches.values():
+  #   del v.__dict__['matches']
 
-  return SN(node=node_totals, edge=edge_totals)
+  res['node_timeseries'] = node_matches
+
+  # ipdb.set_trace()
+
+  return res
 
 
 

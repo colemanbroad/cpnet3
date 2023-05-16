@@ -1,4 +1,4 @@
-# /Users/broaddus/Desktop/work/cpnet3/data-isbi/Fluo-C3DH-A549/01_GT/SEG/man_seg027.tif
+# /Users/broaddus/Desktop/work/cpnet3/data-raw/Fluo-C3DH-A549/01_GT/SEG/man_seg027.tif
 
 import numpy as np
 import re
@@ -22,7 +22,7 @@ def load_pkl(name):
         return pickle.load(file)
 
 base = "/projects/project-broaddus/rawdata/isbi-train/"
-base = "data-isbi/"
+base = "data-raw/"
 base2 = "/Users/broaddus/Desktop/mpi-remote/project-broaddus/devseg_2/data/seginfo/"
 
 def analyze_single(labname):

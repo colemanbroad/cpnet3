@@ -1,25 +1,0 @@
-COLUMN,owner,TYPE,COMMENTS,,,,,,,,,,,
-patch data,user,,"du -h cpnet-out/*/*/dataset.pkl | sort -h The dataset size may be more or less than the raw size because we add a `target` but remove GT/TRA and GT/SEG annotations.
-Also, the patches may overlap.",,,,,,,,,,,
-raw size,isbi,,"du -hsc ../rawdata/isbi_train/* | sort -h size on disk (including 01 and 02)",,,,,,,,,,,
-index (by size),isbi,,datasets sorted by size on disk,,,,,,,,,,,
-name,isbi,,isbiname,,,,,,,,,,,
-ndim,isbi,,2D or 3D ?,,,,,,,,,,,
-scales,isbi,,pixel (voxel) size in microns,,,,,,,,,,,
-sigma,user controlled,,the diagonal elements of the Gaussian covariance matrix for the kernel shape,,,,,,,,,,,
-sparse,,,is every object in each image fully annotated?,,,,,,,,,,,
-t-digits,,,3 = t000.tif or 4 = t0000.tif ?,,,,,,,,,,,
-times 01,isbi,,"start and end time tuple e.g. (0, 100)",,,,,,,,,,,
-times 02,isbi,,start and end time tuple,,,,,,,,,,,
-zoom,user controlled,,"How much to (anisotropically) downscale the raw images?  Typically, we downscale until the average cell size is slightly larger than the kernel equipotential line at 0.5 ",,,,,,,,,,,
-scale comments,,,,,,,,,,,,,,
-comments,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,
-,,,,,,,,,,,,,,

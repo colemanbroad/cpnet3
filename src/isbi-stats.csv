@@ -1,4 +1,5 @@
 name,pool,sigma,subsample,FIXED,voxelsize,sparse,times 01,times 02,tname,ndim,IGNORED,complete,zoom-deprecated,old zoom,old kern,old subsample,runtime [h],index (by size),avg bbox 01,avg bbox 02,dataset size,dataset size 2,raw size,comments
+,,,,,,,,,,,,,,"default = 1; scalar value implies x,y isoropic rescaling only.","default = (3,5,5) for 3D or (5,5) for 2D.",,,,,,,,,
 Fluo-C2DL-Huh7,2,"(5,5)",1,,"(1,1)",False,"(0,30)","(0,30)",3,2,,True,"(0.5, 0.5)",,,1,0.23  ,1,,,68 M,48 M ,41 M ,check this scale
 DIC-C2DH-HeLa,4,"(5,5)",1,,"(0.19 ,0.19)",False,"(0,84)","(0,84)",3,2,,True,"(0.25, 0.25)",1/2,,1,0.29  ,2,"(113,127)","(140,149)",85 M,22 M ,42 M ,
 PhC-C2DH-U373,2,"(5,5)",1,,"(0.65 ,0.65)",False,"(0,115)","(0,115)",3,2,,True,"(0.5, 0.5)",1/2,,1,0.39  ,3,"(83,80)","(75,73)",116 M,87 M ,48 M ,
@@ -19,4 +20,4 @@ Fluo-C3DH-H157,4,"(3,5,5)",1,,"(0.126, 0.126, 0.5)",False,"(0,60)","(0,60)",3,3,
 Fluo-N3DL-DRO,1,"(1.5,3,3)",1,,"(0.406, 0.406, 2.03)",True,"(0,50)","(0,50)",3,3,,False,"(1.0, 1.0, 1.0)",,"1.5,3,3",1,63.07 ,18,"(26,14)","(18,16)",12.5 G,12 G ,25 G ,
 Fluo-N3DL-TRIC,1,"(3,5,5)",1,,"(1.,1.,1.)",True,"(0,65)","(0,210)",3,3,,False,"(1.0, 1.0, 1.0)",,,1,156.55,19,"(20,17)","(22,17)",32 G,11 G ,51 G ,# NA due to cartographic projections
 Fluo-N3DL-TRIF,2,"(3,3,3)",1,,"(0.38 , 0.38, 0.38)",True,,,3,3,,False,"(1.0, 0.5, 0.5)",,"3,3,3",1,,20,"(18,25)","(23,27)",,,320 G,
-flywing,1,"(5,5)",-,,"(1,1)",False,-,-,-,2,,,,"default = 1; scalar value implies x,y isoropic rescaling only.","default = (3,5,5) for 3D or (5,5) for 2D.",,,,,,,,,
+flywing,1,"(5,5)",-,,"(1,1)",False,-,-,-,2,,,,,,,,,,,,,,

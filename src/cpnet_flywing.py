@@ -335,7 +335,7 @@ def params():
   savedir = Path(savedir)
   savedir.mkdir(parents=True,exist_ok=True)
 
-  base = os.path.join(localinfo.local_base, "data-noisbi/care_flywing_crops/")
+  base = os.path.join(localinfo.local_base, "data-raw/care_flywing_crops/")
   base = Path(base)
 
   # np.random uses:

@@ -1,0 +1,27 @@
+Column,Type,Description
+name,,Dataset folder name
+,,
+pool,train/pred,How much to (anisotropically) downscale the raw images? Use whole numbers because we pool over non-overlapping pixel groups.
+sigma,train,The diagonal elements of the Gaussian covariance matrix for the kernel shape
+subsample,train/pred,Take every nth image for training and prediction
+,,
+voxelsize,fixed - isbi,"size in micrometers. x,y,[z]"
+sparse,fixed - isbi,is every object in each image fully annotated?
+times 01,fixed - isbi,"start and end time tuple e.g. (0, 100)"
+times 02,fixed - isbi,start and end time tuple
+tname,fixed - isbi,how many digits in t name? e.g. 't000.tif' = 3 and 't0000.tif' = 4
+ndim,fixed - isbi,2D or 3D?
+,,
+complete,ignored,
+zoom-deprecated,ignored,
+old zoom,ignored,
+old kern,ignored,
+old subsample,ignored,
+runtime [h],ignored,
+index (by size),ignored,
+avg bbox 01,ignored,
+avg bbox 02,ignored,
+dataset size,ignored,size on disk (raw + target)
+dataset size 2,ignored,size on disk (raw + target)
+raw size,ignored,size on disk (raw only)
+comments,ignored,
