@@ -119,10 +119,14 @@ _Pre and Post processing_
     -[ ] Fast VelGrad with lookahead solver
 -[ ] Joint registration and assignment on framepairs (with velgrad costs) ala Dagmar & Florian
 -[ ] "Tracking the Gaps" Track the shapes that constellations of points make instead of the points themselves.
+    - Greedy nearest neib in (nd)^3 for triangles and (nd)^p for p-gons (gaps)
+    - no canonical order a,b,c vs acb vs ...
+    + so use set of pts and set similarity or use (mean(abc) , area(abc))
+    - there ARE situations where it's easier to track these shapes-in-the-gaps than the original points!
 -[ ] Joint nonlinear registration and correspondence (assignment) with soft nearest parents.
     We 
 
-# Bug oversaturated glance patches
+# Oversaturated glance patches
 
 Q: Why do the raw parts of the training data patches look oversaturated?
     [see here](file:///Users/broaddus/Desktop/work/cpnet3/inspect_data/Fluo-N3DH-SIM+-t095-d1600.png)
@@ -172,15 +176,13 @@ see ![augmentations](augmentations.png)
 > We therefore build on the shapes generative model of [13] to simulate b ∼ U
   {1,B} random geo- metric shapes in the background
 
-
-
 # Prediction time augmentation
 
 I suspect that rotating my samples at prediction time will help improve
 `DIC-C2DH-HeLa` which has terrible annotations and often predicts in the
 wrong spot altogether. 
 
-# TODO: Allow cells to enter and exit through boundaries
+# Allow cells to enter and exit through boundaries
 
 This is an extension of allowing cells to enter and exit AT ALL. You could restrict ENTER/EXIT to a boundary zone near image edge? This would be useful. 
 
@@ -211,7 +213,11 @@ Potential solution: add a distance cutoff to the edges and allow for edges witho
 
 Now BF-C2DL-MuSC/01.
 
-The cells crawl around in a dish, so no cells enter or leave the FoV through the image boundaries. But they do divide A LOT towards the end of the series. It goes from 1 to 24 cells from t=911 to t=1376. If we plot the F1 score over time I bet all the errors are at the end. ![write code to make this plot](f1-over-time.png). The banding in the plot show that we have discrete numbers of errors starting with zero. It's true! The F1 score for this dataset drops dramatically towards the end of the timeseries and fluctuates wildly. It would be nice to know _exactly where_ the problems arose. What kind of movements / divisions / etc cause these problems. see #23. 
+The cells crawl around in a dish, so no cells enter or leave the FoV through the image boundaries. But they do divide A LOT towards the end of the series. It goes from 1 to 24 cells from t=911 to t=1376. If we plot the F1 score over time I bet all the errors are at the end. 
+
+-[x] ![write code to make this plot](f1-over-time.png). 
+
+The banding in the plot show that we have discrete numbers of errors starting with zero. It's true! The F1 score for this dataset drops dramatically towards the end of the timeseries and fluctuates wildly. It would be nice to know _exactly where_ the problems arose. What kind of movements / divisions / etc cause these problems. see #23. 
 
 _These scores are an indictment of the nearest parent strategy?_
 
@@ -247,26 +253,20 @@ What about Fluo-C3DL-MDA231/02 ?
 
 There is no obvious visual cause, although there are many cells near the boundary. The cells have oblong appearance, move quickly and some do enter/exit through image boundaries. The scores are not unexpected given the image. Still it would be nice to know what fraction of these scores come from enter/exits vs bad movement model...
 
+Collecting the solutions above we have:
+-[ ] Tracking model that allows enter and exit through bounds #34
+-[x] Know how many enter/exit events we have over time for any dataset from GT anno.
+
+# How many enter/exits are there for each GT dataset?
+
+Let's build a table that computes the stats for every GT dataset. We want to cache (pickle) the tracking so we don't have to load, and we want to process it and compute Divisions, Entries, Exits and the total number of objects over all times. Note, that a single object can count for both an Entry and an Exit at once, or an Entry and a Division.
 
 
+# Hyperparameter Tuning for Detection and Tracking
 
+# Dynamically adjust batch size to optimize training throughput
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Make a C lib or static linked lib that offers tracking methods that compete head-to-head with TrackMate
 
 
 

@@ -407,7 +407,7 @@ def createTargetWithTrackingLabels(tb, time, img_shape, sigmas):
   return target
 
 # draw tails on centerpoints to show cell motion
-def createTailsWithTrackingLabels(tb, time, img_shape):
+def createTailsWithTrackingLabels(tb, time, img_shape, color=255):
   imgbase = zeros(img_shape).astype(np.int64)
   if time==0: return imgbase
 
@@ -418,10 +418,11 @@ def createTailsWithTrackingLabels(tb, time, img_shape):
     n1 = tb.parents[(time,l0)]
     if n1 is None: continue
     p1 = tb.pts[n1]
-    color = 255
     drawLine(imgbase,p0,p1,color)
 
   return imgbase
+
+
 
 # Classic Bresenham Algorithm
 # Draw a line from pt -> par 

@@ -2,6 +2,8 @@ from tracking2 import *
 from time import time
 from scipy.ndimage import zoom
 from scipy.interpolate import RegularGridInterpolator as RGI
+from matplotlib import pyplot as plt
+import pandas as pd
 
 """
 Wed Mar 29, 2023
@@ -137,8 +139,7 @@ def computeScores(directory, method):
   scores['dataset']  = dataset
   return scores
 
-from matplotlib import pyplot as plt
-
+# matplot plot for F1 linking scores over time
 def plotscores_bytime(scores):
 
   times = list(scores.keys())
@@ -155,6 +156,49 @@ def plotscores_bytime(scores):
   vals = [s.f1 for s in scores.values()]
   plt.plot(times,vals,'.', label='F1')
   plt.legend()
+
+
+
+# Only run once per dataset, then add it to isbidata.csv
+def computeEnterExitCounts(directory):
+  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
+  # isbi = load_isbi_csv(isbiname)
+
+  # print(directory)
+  d = f'../cpnet-out/{isbiname}/{dataset}/track-analysis/'
+  # if path.exists(d + 'gt-tracks.pkl'): return
+  # os.makedirs(d,exist_ok=True)
+  # gt = loadISBITrackingFromDisk(directory)
+  # pickle.dump(gt,open(d + 'gt-tracks.pkl','wb'))
+  # return
+  gt = pickle.load(open(d + 'gt-tracks.pkl','rb'))
+
+  #   return locals()
+  # def next(D):
+  #   globals().update(D)
+  
+  # dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
+  # ipdb.set_trace()
+
+  c = SN(entries=0, exits=0, total=0, division=0)
+  t_start, t_final = min(gt.times), max(gt.times)
+
+  for t,ls in gt.time2labelset.items():
+    for l in ls:
+      c.total += 1
+      if gt.parents[(t,l)] is None and t!=t_start:
+        c.entries += 1
+      x = gt.children.get((t,l), None)
+      if x is None and t!=t_final:
+        c.exits += 1
+      if x is not None and len(x)==2:
+        c.division += 1
+
+  print(directory, c)
+  c.isbiname = isbiname
+  c.dataset = dataset
+  c.ratio = (c.entries + c.exits ) / c.total
+  return c.__dict__
 
 # pretty print nested python structures
 def printscores(scores):
@@ -174,6 +218,14 @@ def printscores(scores):
   print(scores[key]['edge_confusion'])
   print()
 
+
+# TODO
+# directory is e.g. 'path/isbiname/01_GT/TRA/'
+def parseDirectoryName(directory):
+  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
+
+
+# entrypoint to build a table of scores over all GT directories
 def scoreAllDirs():
   table = list()
   # for dire in glob("../data-raw/*/*_GT/TRA/"):
@@ -181,8 +233,12 @@ def scoreAllDirs():
   base = path.normpath("../cpnet-out/")
   # gt_directories = "/projects/project-broaddus/rawdata/isbi_train/*/*_GT/TRA/"
   gt_directories = "../data-raw/*/*_GT/TRA/"
+  res = []
   for directory in sorted(glob(gt_directories)):
     # print(directory)
+    x = computeEnterExitCounts(directory)
+    res.append(x)
+    continue
     isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
     # if 'Fluo-C3DH-A549' not in isbiname: continue
     # if 'PhC-C2DL-PSC' in isbiname: continue
@@ -209,6 +265,8 @@ def scoreAllDirs():
 
     # printscores(scores)
 
+  pd.DataFrame(res).to_csv('../isbi-tracking-stats-gt.csv')
+
   lines = []
   for i, scores in enumerate(table):
     node = scores['node']
@@ -224,9 +282,13 @@ def scoreAllDirs():
   print(tabulate(lines, headers='keys'))
   return lines
 
-
 def saveTrackingImages(directory):
   directory = "Fluo-C2DL-MSC/"
+
+
+
+
+
 
 if __name__=='__main__':
   res = scoreAllDirs()
