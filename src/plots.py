@@ -167,6 +167,10 @@ def plotMetrics():
   plt.savefig("plots/precision-recall.pdf")
 
 
+
+
+
+
 badkeys = ['gt_matched_mask', 'yp_matched_mask', 'gt2yp', 'yp2gt', 'pts_gt', 'pts_yp']
 keys = ['isbi', 'time', 'weights', 'n_matched', 'n_proposed', 'n_gt', 'precision', 'recall', 'f1']
 

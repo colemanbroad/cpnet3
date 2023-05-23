@@ -4,6 +4,7 @@ from scipy.ndimage import zoom
 from scipy.interpolate import RegularGridInterpolator as RGI
 from matplotlib import pyplot as plt
 import pandas as pd
+import seaborn as sns
 
 """
 Wed Mar 29, 2023
@@ -49,6 +50,11 @@ The evaluation metrics :
 - precision, recall and f1 scores for both detections and links
 - specialized division scores which allow for flexibility in precise div timing
 """
+
+
+# base = path.normpath("../cpnet-out/")
+# cpnet_out = path.normpath("../cpnet-out/")
+outdir = path.normpath("../results/e01/")
 
 # Introduce a small number of False Positive detections to the tracking results
 # to simulate noise in the detection procedure.
@@ -109,10 +115,14 @@ def shiftDetectionsInDTPS(dtps, scale=0.05):
 # method in ['nn', 'nn-prune', 'greedy', 'munkres']
 def computeScores(directory, method):
   isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-  isbi = load_isbi_csv(isbiname)
-  gt = loadISBITrackingFromDisk(directory)
+
+  d = f'../cpnet-out/{isbiname}/{dataset}/track-analysis/'
+  gt = pickle.load(open(d + 'gt-tracks.pkl','rb'))
+  # gt = loadISBITrackingFromDisk(directory)
+
   dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
   # aniso = [1,1] if '2D' in directory else [1,1,1]
+  isbi = load_isbi_csv(isbiname)
   aniso = isbi['voxelsize']
   dub = 100
 
@@ -134,9 +144,24 @@ def computeScores(directory, method):
   delta_t = time() - tic
 
   scores = compare_trackings(gt,yp,aniso,dub)
+
+  node = scores['node']
+  edge = scores['edge']
+  scores.update({'node-'+k:v for k,v in node.items()})
+  scores.update({'edge-'+k:v for k,v in edge.items()})
+  del scores['node']
+  del scores['edge']
+  del scores['node_confusion']
+  del scores['edge_confusion']
+  del scores['node_timeseries']
+  del scores['edge_by_time']
+
   scores['delta_t']  = delta_t
   scores['isbiname'] = isbiname
   scores['dataset']  = dataset
+  scores['method'] = method
+
+  # ipdb.set_trace()
   return scores
 
 # matplot plot for F1 linking scores over time
@@ -157,12 +182,9 @@ def plotscores_bytime(scores):
   plt.plot(times,vals,'.', label='F1')
   plt.legend()
 
-
-
 # Only run once per dataset, then add it to isbidata.csv
 def computeEnterExitCounts(directory):
   isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-  # isbi = load_isbi_csv(isbiname)
 
   # print(directory)
   d = f'../cpnet-out/{isbiname}/{dataset}/track-analysis/'
@@ -177,9 +199,6 @@ def computeEnterExitCounts(directory):
   # def next(D):
   #   globals().update(D)
   
-  # dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
-  # ipdb.set_trace()
-
   c = SN(entries=0, exits=0, total=0, division=0)
   t_start, t_final = min(gt.times), max(gt.times)
 
@@ -225,71 +244,87 @@ def parseDirectoryName(directory):
   isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
 
 
+
+def buildGTTrackingStats():
+  gt_directories = "../data-raw/*/*_GT/TRA/"
+  
+  table = list()
+  for directory in sorted(glob(gt_directories)):    
+    print(directory)
+    x = computeEnterExitCounts(directory)
+    table.append(x)
+  pd.DataFrame(table).to_csv(outdir + 'isbi-tracking-stats-gt.csv')
+
 # entrypoint to build a table of scores over all GT directories
 def scoreAllDirs():
-  table = list()
-  # for dire in glob("../data-raw/*/*_GT/TRA/"):
-
-  base = path.normpath("../cpnet-out/")
-  # gt_directories = "/projects/project-broaddus/rawdata/isbi_train/*/*_GT/TRA/"
   gt_directories = "../data-raw/*/*_GT/TRA/"
-  res = []
+  
+  table = list()
   for directory in sorted(glob(gt_directories)):
-    # print(directory)
-    x = computeEnterExitCounts(directory)
-    res.append(x)
-    continue
+        
     isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-    # if 'Fluo-C3DH-A549' not in isbiname: continue
-    # if 'PhC-C2DL-PSC' in isbiname: continue
-    if isbiname not in ['DIC-C2DH-HeLa', 'Fluo-C2DL-MSC', 'Fluo-C3DL-MDA231']: continue
-    if dataset!='02_GT': continue
-    outdir = path.join(base, isbiname, dataset, 'track-analysis')
-    os.makedirs(outdir, exist_ok=True)
-
-    # try:
-    #   assert False
-    #   d = pickle.load(open(outdir + '/compare_results-aniso-mca.pkl','rb'))
-    #   if len(d)==0:
-    #     print("Empty Data!")
-    #     assert False
-    #   # pickle.dump(d, open(outdir + '/compare_results-aniso-mca.pkl','wb'))
-    #   # os.remove(directory + '/compare_results-aniso-mca.pkl')
-    # except:
 
     for method in ['nn','nn-prune','greedy','munkres']:
+      if (isbiname,dataset,method) in skip_experiments: continue
+      print(directory, method)
       scores = computeScores(directory, method)
-      scores['method'] = method
-      pickle.dump(scores, open(outdir + f'/scores-{method}.pkl','wb'))
       table.append(scores)
 
-    # printscores(scores)
+  pd.DataFrame(table).to_csv(outdir + "scoreAllDirs2.csv")
 
-  pd.DataFrame(res).to_csv('../isbi-tracking-stats-gt.csv')
+  # print(tabulate(lines, headers='keys'))
+  # return lines
 
-  lines = []
-  for i, scores in enumerate(table):
-    node = scores['node']
-    edge = scores['edge']
-    scores.update({'node-'+k2:v2 for k2,v2 in node.items()})
-    scores.update({'edge-'+k2:v2 for k2,v2 in edge.items()})
-    del scores['node']
-    del scores['edge']
-    del scores['node_confusion']
-    del scores['edge_confusion']
-    lines.append(scores)
+# Each of these experiments take more than ten seconds
+skip_experiments = [
+  ("Fluo-N3DH-CE", "01_GT", "greedy"),
+  ("PhC-C2DL-PSC", "02_GT", "munkres"),
+  ("Fluo-N3DH-CE", "02_GT", "greedy"),
+  ("PhC-C2DL-PSC", "01_GT", "munkres"),
+  ("PhC-C2DL-PSC", "02_GT", "greedy"),
+  ("PhC-C2DL-PSC", "01_GT", "greedy"),
+  ]
 
-  print(tabulate(lines, headers='keys'))
-  return lines
+def plotTrackingScores():
+  df = pd.read_csv("../scoreAllDirs.csv")
+
+  df['log10 err-rate'] = np.log10(1 - df['edge-f1']) ## 1 - F1 propto Error Rate
+  df['isbiname/dataset'] = df['isbiname'] + ' / ' + df['dataset']
+
+  # sns.set(style='ticks')
+  # fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, sharey=True)
+  # for idx, row in enumerate(df):
+  #   ax.plot(row['edge-f1'], row['isbiname'], c=row['method'])
+
+  facetgrid = sns.relplot(
+    data=df,
+    x='log10 err-rate',
+    y='isbiname/dataset',
+    hue='method',
+    # col='isbi',
+    # col_wrap=6, 
+    # col_order=isbi_sorted.index, 
+    height=1.5, 
+    aspect=1,
+    )
+  plt.gcf().set_size_inches(14.12,  9.1)
+
+  # plt.show()
+  # input()
+  # ipdb.set_trace()
+  plt.savefig("../results/plots/plotTrackingScores.pdf")
+  plt.close()
+
+
+
+
 
 def saveTrackingImages(directory):
   directory = "Fluo-C2DL-MSC/"
 
 
-
-
-
-
 if __name__=='__main__':
-  res = scoreAllDirs()
-  scores = formatTable(res)
+  scoreAllDirs()
+
+
+

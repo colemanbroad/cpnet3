@@ -833,7 +833,7 @@ def predict(PR):
     ## This allows us to track across arbitrary sequences of images
     ## to easily test the robustness of the tracker.
     lab = tracking2.createTargetWithTrackingLabels(tb, i, raw.shape, PR.isbi['sigma']) 
-    labtails = tracking2.createTailsWithTrackingLabels(tb,i,raw.shape)
+    labtails = tracking2.drawTailsWithTrackingLabels(tb,i,raw.shape)
 
     labpng = img2png(lab, 'L', colors=cmap_track)
     labtailpng = img2png(labtails, 'L')

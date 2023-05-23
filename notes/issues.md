@@ -184,7 +184,16 @@ wrong spot altogether.
 
 # Allow cells to enter and exit through boundaries
 
+#34
+
 This is an extension of allowing cells to enter and exit AT ALL. You could restrict ENTER/EXIT to a boundary zone near image edge? This would be useful. 
+
+After talking with Antithesis:
+
+A cell is likely to have entered through the boundary if it is closer to the boundary than to any parent? No, because sometimes cells hang out near image edges. If the cell is close to boundary and no cell is near in previous frame then it is an entry.
+
+
+
 
 # Why does NN tracking fail on BF-C2DL-MuSC ?
 
@@ -196,11 +205,11 @@ I think the initial experiments were run remotely...
 
 Actually, there are five datasets that don't do well with NN linking on GT pts.
 
-Fluo-C2DL-MSC       02    0.934911
-BF-C2DL-MuSC        01    0.956835
-Fluo-C3DH-H157      02    0.962199
-Fluo-C3DL-MDA231    02    0.9746
-BF-C2DL-MuSC        02    0.975593
+Fluo-C2DL-MSC       02    0.934911 - 0.064 enters / exits
+BF-C2DL-MuSC        01    0.956835 - false divisons from dense packing ? 
+Fluo-C3DH-H157      02    0.962199 - 0.082 enters / exits
+Fluo-C3DL-MDA231    02    0.9746 - 0.036 enters / exits
+BF-C2DL-MuSC        02    0.975593 - dunno ? 
 
 Let's start with the worst one, Fluo-C2DL-MSC/02.
 
@@ -215,7 +224,7 @@ Now BF-C2DL-MuSC/01.
 
 The cells crawl around in a dish, so no cells enter or leave the FoV through the image boundaries. But they do divide A LOT towards the end of the series. It goes from 1 to 24 cells from t=911 to t=1376. If we plot the F1 score over time I bet all the errors are at the end. 
 
--[x] ![write code to make this plot](f1-over-time.png). 
+-[x] ![write code to make this plot](f1-over-time.png).
 
 The banding in the plot show that we have discrete numbers of errors starting with zero. It's true! The F1 score for this dataset drops dramatically towards the end of the timeseries and fluctuates wildly. It would be nice to know _exactly where_ the problems arose. What kind of movements / divisions / etc cause these problems. see #23. 
 
@@ -249,13 +258,13 @@ OK, now let's look at Fluo-C3DH-H157/02.
 
 It's the same situation as Fluo-C2DL-MSC/02. The cells are constantly moving in and out of bounds. We should be able to detect these situations without looking at images, but just by looking at GT links. If there are many ENTER and EXIT nodes in the GT lineage then we don't expect to do well.
 
-What about Fluo-C3DL-MDA231/02 ? 
+What about Fluo-C3DL-MDA231/02 ?
 
 There is no obvious visual cause, although there are many cells near the boundary. The cells have oblong appearance, move quickly and some do enter/exit through image boundaries. The scores are not unexpected given the image. Still it would be nice to know what fraction of these scores come from enter/exits vs bad movement model...
 
 Collecting the solutions above we have:
--[ ] Tracking model that allows enter and exit through bounds #34
 -[x] Know how many enter/exit events we have over time for any dataset from GT anno.
+-[ ] Tracking model that allows enter and exit through bounds #34
 
 # How many enter/exits are there for each GT dataset?
 
@@ -267,6 +276,8 @@ Let's build a table that computes the stats for every GT dataset. We want to cac
 # Dynamically adjust batch size to optimize training throughput
 
 # Make a C lib or static linked lib that offers tracking methods that compete head-to-head with TrackMate
+
+
 
 
 

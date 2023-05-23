@@ -127,21 +127,24 @@ def addNodeClassification(tb):
   tb.labels = labels
   tb.edge_labels = edge_labels
 
-def remNodeClassification(tb):
-  del tb.labels
-  del tb.edge_labels
-
 def groupby(dikt):
   inverse = defaultdict(set)
   for key,val in dikt.items():
     inverse[val].add(key)
   return inverse
 
+
+
+
+
+
 # Remove singleton branches which are usually false divisions.
 def pruneSingletonBranches(tb):
 
   ## groupby toisbi
-  isbi2nodeset = groupby(tb.toisbi)
+  isbi2nodeset = defaultdict(set)
+  for node,label in tb.toisbi.items():
+    isbi2nodeset[label].add(node)
 
   # Singleton branches have no children and either:
   #  no parent. The node appears and then dies.
@@ -164,8 +167,8 @@ def pruneSingletonBranches(tb):
     
     continue
 
-    ## if we want to try and fix the isbi labeling in place instead of 
-    ## regenerating it we can do this... Otherwise regen everything.
+    # if we want to try and fix the isbi labeling in place instead of
+    # regenerating it we can do this... Otherwise regen everything.
     if len(tb.children[parent]) != 1: continue
     
     onlychild = list(tb.children[parent])[0]
@@ -198,7 +201,6 @@ def pruneSingletonBranches(tb):
 #         for j in prange(width_out):
 
 
-
 # ltps: list of pts for each time
 # aniso: the pixel/voxel size (relative)
 # dub: distance upper bound for child-parent connections (in pixels)
@@ -216,7 +218,7 @@ def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   times = sorted(list(dtps.keys()))
 
   # put all the points in a big dictionary
-  for t,pts in dtps.items(): 
+  for t,pts in dtps.items():
     for i,p in enumerate(pts):
       pts_dict[(t,i)] = p
 
@@ -343,8 +345,6 @@ def link_minCostAssign(*,dtps,aniso=(1,1),dub=100, greedy=True):
         dummy = np.zeros([M-2*N, M]) + 100
         costs = np.concatenate([costs,dummy],axis=0)
 
-
-
       row_ind, col_ind = linear_sum_assignment(costs, maximize=False)
       edges = np.zeros([N,M], dtype=np.uint8)
       for r,c in zip(row_ind,col_ind):
@@ -360,7 +360,6 @@ def link_minCostAssign(*,dtps,aniso=(1,1),dub=100, greedy=True):
   conformTracking(tb)
 
   return tb
-
 
 
 
@@ -407,7 +406,7 @@ def createTargetWithTrackingLabels(tb, time, img_shape, sigmas):
   return target
 
 # draw tails on centerpoints to show cell motion
-def createTailsWithTrackingLabels(tb, time, img_shape, color=255):
+def drawTailsWithTrackingLabels(tb, time, img_shape, color=255):
   imgbase = zeros(img_shape).astype(np.int64)
   if time==0: return imgbase
 
@@ -421,7 +420,6 @@ def createTailsWithTrackingLabels(tb, time, img_shape, color=255):
     drawLine(imgbase,p0,p1,color)
 
   return imgbase
-
 
 
 # Classic Bresenham Algorithm
