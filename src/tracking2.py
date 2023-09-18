@@ -4,7 +4,7 @@ from types import SimpleNamespace as SN
 from pykdtree.kdtree import KDTree
 import matplotlib
 from pointmatch import snnMatch, build_scores
-from cpnet import load_isbi_csv
+# from cpnet import load_isbi_csv
 import os
 import pickle
 
@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from random import random
 
 from tifffile                  import imread
+from skimage.io import imsave
 import re
 from skimage.measure           import regionprops
 from os import path
@@ -208,6 +209,7 @@ def pruneSingletonBranches(tb):
 # i.e. label zero serves as the background label
 # We use the index into ltps as the initial label, but convert
 # this label to the ISBI scheme for most processing
+# TODO: change dub -> `max_parent_distance`
 def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   parents = dict()
   pts_dict = dict()
@@ -234,6 +236,12 @@ def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
     # WARN: do we want t_idx-1 or t-1 ? t_idx-1 connects across many frames.
     pts_prev = dtps[t_prev]
 
+
+    # Find the nearest parent with distance < dub. If none exist then it's an
+    # Enter. If the image boundary is closer than the nearest parent it's
+    # also an Enter. If we build `children` simultaneously we can know when
+    # an assignment is a division. We currently do this in a separate pass in
+    # `conformTracking()`.
     kdt = KDTree(array(pts_prev)*aniso)
     dist, curr2prev = kdt.query(array(pts)*aniso, k=1, distance_upper_bound=dub)
     for idx_curr,idx_prev in enumerate(curr2prev):
@@ -244,7 +252,49 @@ def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   conformTracking(tb)
   return tb
 
+import json
 
+def save_tb_as_json(tb):
+  tracked_cells = []
+  for t in tb.times:
+    for l in list(tb.time2labelset[t]):
+      pt = tb.pts[(t,l)].tolist() #[float(x) for x in tb.pts[(t,l)]]
+      parent = tb.parents[(t,l)]
+      parent = [-1, -1] if parent is None else parent 
+      # isbi_id = int(tb.toisbi.get((t,l), [-1]))
+      isbi_id = tb.toisbi[(t,l)]
+      isbi_id = [-1, -1] if isbi_id is None else isbi_id 
+      tracked_cells.append({'time':t, 'id':l, 'pt':pt, 'parent_id':parent, 'isbi_id':isbi_id})
+  json.dump(tracked_cells, open('tracked_cells.json','w'), cls=NumpyArrayEncoder)
+
+class NumpyArrayEncoder(json.JSONEncoder):
+   def default(self, obj):
+       if isinstance(obj, np.ndarray):
+           return obj.tolist()
+       if 'int' in str(type(obj)):
+           return int(obj)
+       if 'float' in str(type(obj)):
+           return float(obj)
+       return json.JSONEncoder.default(self, obj)   
+
+def train_link_nearestNeib(gt,aniso):
+  dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
+  
+  dub = 50
+  best = SN(score=0, dub=50)
+  for dub in [10,20,30,40,50,60,70,80,90,100,150,200,300,np.inf]:
+    yp = link_nearestNeib(dtps=dtps, aniso=aniso, dub=dub)
+    # WARNING: The `dub` in compare_trackings() is for matching detections,
+    # not for assigning parents. So we can make dub arbitrarily small here.
+    comparison = compare_trackings(gt,yp,aniso,10,byclass=False)
+    f1_score = comparison['edge']['f1']  
+    print(dub, f1_score)
+    if f1_score > best.score: 
+      best.dub = dub
+      best.score = f1_score
+  return best
+
+ 
 # Minimum Euclidean Distance Tracking with max-two-daughters constraint.
 # 140ms (20ms) for 100 x 100 pts (@jit)
 # 17s (7.2s) for 1000 pts (@jit) and
@@ -364,11 +414,13 @@ def link_minCostAssign(*,dtps,aniso=(1,1),dub=100, greedy=True):
 
 
 
-# Variant of cpnet.createTarget()
-# tb: TrueBranching
-# time: int
-# img_shape: tuple
-# sigmas: tuple of radii for label marker
+"""
+Variant of cpnet.createTarget()
+tb: TrueBranching
+time: int
+img_shape: tuple
+sigmas: tuple of radii for label marker
+"""
 def createTargetWithTrackingLabels(tb, time, img_shape, sigmas):
   s  = array(sigmas).astype(float)
   ks = floor(7*s).astype(int)   # extend support to 7/2 sigma in every direc
@@ -412,19 +464,54 @@ def drawTailsWithTrackingLabels(tb, time, img_shape, color=255):
 
   if len(tb.time2labelset[time])==0: return imgbase
 
+  def func(img,idx,val):
+    img[idx] = val
+
   for l0 in tb.time2labelset[time]:
     p0 = tb.pts[(time,l0)]
     n1 = tb.parents[(time,l0)]
     if n1 is None: continue
     p1 = tb.pts[n1]
-    drawLine(imgbase,p0,p1,color)
+    drawLine(imgbase,p0,p1,color,func)
 
   return imgbase
+
+# Procude a series of images drawing tracking tails with errors from 
+# comparing ground truth (gt) and proposed (yp) tracking solutions. 
+def drawTrackingTailsWithErrorsGenerator(gt, yp, edge_matching, img_shape,):
+  # if time==0: return imgbase
+
+  def func(img,idx,val):
+    img[idx] = (img[idx]+val).clip(max=255)
+    img[idx]
+
+  for time in sorted(gt.time2labelset.keys() | yp.time2labelset.keys()):
+
+    imgbase = zeros(img_shape + (4,)).astype(np.uint8)
+    if len(gt.time2labelset[time])==0: return imgbase
+
+    for l0 in gt.time2labelset[time]:
+      p0 = gt.pts[(time,l0)]
+      n1 = gt.parents[(time,l0)]
+      if n1 is None: continue
+      p1 = gt.pts[n1]
+      drawLine(imgbase,p0,p1,(255,0,0,255),func)
+
+    for l0 in yp.time2labelset[time]:
+      p0 = yp.pts[(time,l0)]
+      n1 = yp.parents[(time,l0)]
+      if n1 is None: continue
+      p1 = yp.pts[n1]
+      drawLine(imgbase,p0,p1,(0,255,0,255),func)
+      imgbase[tuple(int(x) for x in p0)] = (255,255,255,255)
+
+    # return imgbase
+    yield imgbase
 
 
 # Classic Bresenham Algorithm
 # Draw a line from pt -> par 
-def drawLine(img,pt,par,color):
+def drawLine(img,pt,par,color,func):
   x0,y0 = int(pt[0]), int(pt[1])
   x1,y1 = int(par[0]), int(par[1])
   dx = abs(x1 - x0)
@@ -435,7 +522,8 @@ def drawLine(img,pt,par,color):
   if dx > dy:
     err = dx / 2.0
     while x != x1:
-      img[x,y] = color
+      func(img,(x,y),color)
+      # img[x,y] += color
       err -= dy
       if err < 0:
         y += sy
@@ -444,13 +532,15 @@ def drawLine(img,pt,par,color):
   else:
     err = dy / 2.0
     while y != y1:
-      img[x,y] = color
+      # img[x,y] += color
+      func(img,(x,y),color)
       err -= dx
       if err < 0:
         x += sx
         err += dy
       y += sy
-  img[x,y] = color
+  # img[x,y] += color
+  func(img,(x,y),color)
 
 # directory: path of e.g. 01_GT/TRA/
 def loadISBITrackingFromDisk(directory):
@@ -738,6 +828,7 @@ def compare_trackings(gt,yp,aniso,dub,byclass=True):
   #   del v.__dict__['matches']
 
   res['node_timeseries'] = node_matches
+  res['edge_matches'] = edge_matches
 
   # ipdb.set_trace()
 

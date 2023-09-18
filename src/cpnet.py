@@ -286,7 +286,6 @@ def img2png(x, kind, colors=None, normalize_intensity=True):
 # ## result. First, let's draw tails from one result without worrying about
 # ## GT results or matching them together.
 # def plotTailsOnImg(tracking,image):
-
 def norm_minmax01(x):
   hi = x.max()
   lo = x.min()
@@ -371,6 +370,9 @@ def params(isbiname = "Fluo-C2DL-Huh7"):
     traindata += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [4]]
     testdata  += [dict(dset=d, time=t) for i,t in enumerate(alltimes) if i%8 in [0]]
   
+  # testdata = testdata[:2]
+  # traindata = traindata[:2]
+
   PR.traindata = np.array(traindata)
   PR.testdata  = np.array(testdata)
 
@@ -475,7 +477,6 @@ def data(PR):
     save_png(PR.savedir/f'data/png/t-{s.dset}-{s.time:03d}-d{i:04d}.png', composite)
 
   # return data
-
 
 ## Train CPNET; Save history of validation metrics and best CPNET weights
 ## for each metric.
@@ -722,7 +723,6 @@ def train(PR, continue_training=False):
     print("\033[F",end='') ## move cursor UP one line 
     print(f"finished epoch {ep+1}/{N_epochs}, loss={history.lossmeans[-1]:4f}, dt={dt:4f}, rate={N_pix/dt:5f} Mpix/s", end='\n',flush=True)
 
-
 ## Evaluate models and make predictions on unseen data.
 def predict(PR):
 
@@ -806,9 +806,15 @@ def predict(PR):
   if PR.run_tracking == False: sys.exit(0)
 
   print(f"Run tracking...", end='\n', flush=True)
-  tb = tracking2.link_nearestNeib(ltps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
+  tb = tracking2.link_nearestNeib(dtps=ltps, aniso=PR.isbi['voxelsize'], dub=100)
   tracking2.addIsbiLabels(tb)
 
+  tracking2.save_tb_as_json(tb)
+
+  # ipdb.set_trace()
+  ## Save the tracking in a format that's easy to parse.
+
+  
   ## Draw a graph of the cell lineage tree with nodes colored
   ## according to the ISBI standard.
   if False:
