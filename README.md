@@ -1,10 +1,9 @@
 **Detect and track cells in bioimage timeseries.**  
 Produce results in a variety of formats including [ISBI CTC](http://celltrackingchallenge.net/) compatible.
 
-This project is a consolidation of [devseg_2]
-(https://github.com/mpicbg-csbd/devseg2) which reduces all code necessary for
-data generation, detection training, detection prediction, segmentation,
-tracking and evaluation to 1k lines of python.
+This project is a consolidation of [devseg_2](https://github.com/mpicbg-csbd/devseg2) 
+which reduces all code necessary for data generation, detection training, detection prediction,
+segmentation, tracking and evaluation to 1k lines of python.
 
     -------------------------------------------------------------------------------
     Language                     files          blank        comment           code

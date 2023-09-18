@@ -1,3 +1,4 @@
+
 from tracking2 import *
 from time import time
 from scipy.ndimage import zoom
@@ -5,6 +6,7 @@ from scipy.interpolate import RegularGridInterpolator as RGI
 from matplotlib import pyplot as plt
 import pandas as pd
 import seaborn as sns
+from skimage.io import imsave
 
 """
 Wed Mar 29, 2023
@@ -54,7 +56,16 @@ The evaluation metrics :
 
 # base = path.normpath("../cpnet-out/")
 # cpnet_out = path.normpath("../cpnet-out/")
-outdir = path.normpath("../results/e01/")
+outdir = path.normpath("../results/e01/") + path.sep
+
+# TODO
+# directory is e.g. 'path/isbiname/01_GT/TRA/'
+def parseDirectoryName(directory):
+  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
+
+
+
+### FAULT INJECTION
 
 # Introduce a small number of False Positive detections to the tracking results
 # to simulate noise in the detection procedure.
@@ -84,7 +95,6 @@ def removeFalseNegativesFromDTPS(dtps, fn_rate=0.05):
     # ipdb.set_trace()
     dtps[t] = newpts
 
-
 # Shift the positions of existing detections by adding random jitter, and also
 # adding a spatially correlated drift. The correlated drift can by const across
 # the entire image, or only locally correlated. The decay length of the spatial
@@ -110,6 +120,7 @@ def shiftDetectionsInDTPS(dtps, scale=0.05):
     rgi  = RGI(grid,drift,method='linear')
     dtps[t] = pts + rgi(pts) # add correlated drift
 
+### RUN EVALUATION, Make PLOTS and TABLES
 
 # directory: path of e.g. 01_GT/TRA/
 # method in ['nn', 'nn-prune', 'greedy', 'munkres']
@@ -130,8 +141,12 @@ def computeScores(directory, method):
   # removeFalseNegativesFromDTPS(dtps, fn_rate=0.10)
   # shiftDetectionsInDTPS(dtps, scale=0.05)
 
+  best_hyperparams = []
+
   tic = time()
   if method=='nn':
+    # ipdb.set_trace()
+    best = train_link_nearestNeib(gt,aniso)
     yp = link_nearestNeib(dtps=dtps, aniso=aniso, dub=dub)
   elif method=='nn-prune':
     yp = link_nearestNeib(dtps=dtps, aniso=aniso, dub=dub)
@@ -144,6 +159,25 @@ def computeScores(directory, method):
   delta_t = time() - tic
 
   scores = compare_trackings(gt,yp,aniso,dub)
+
+  ipdb.set_trace()
+
+  img_shape = isbi['rawsize 01'] if dataset=='01_GT' else isbi['rawsize 02']
+  g = drawTrackingTailsWithErrorsGenerator(gt, yp, scores['edge_matches'], img_shape)
+  
+  from cpnet import img2png, norm_minmax01
+
+  os.makedirs(d + 'png/', exist_ok=True)
+  for i,lab in enumerate(g):
+    # if i < 1200: continue
+    # if i == 1231: break
+    raw = imread(f"../data-raw/{isbiname}/{dataset[:2]}/t{i:03d}.tif")
+    # rawpng = img2png(raw, 'I')
+    raw = norm_minmax01(raw)
+    raw = img2png(raw, 'I')
+    composite = np.round(raw/2 + lab/2).astype(np.uint8).clip(min=0,max=255)
+    imsave(d + 'png/' + f'lab{i:04d}.png', composite)
+
 
   node = scores['node']
   edge = scores['edge']
@@ -164,25 +198,7 @@ def computeScores(directory, method):
   # ipdb.set_trace()
   return scores
 
-# matplot plot for F1 linking scores over time
-def plotscores_bytime(scores):
-
-  times = list(scores.keys())
-
-  # vals = [s.n_gt for s in scores.values()]
-  # plt.plot(times,vals,'o', label='n_gt')
-  # vals = [s.n_proposed for s in scores.values()]
-  # plt.plot(times,vals,'.', label='n_proposed')
-  # vals = [s.n_matched for s in scores.values()]
-  # plt.plot(times,vals,'.', label='n_matched')
-  # plt.legend()
-
-  plt.figure()
-  vals = [s.f1 for s in scores.values()]
-  plt.plot(times,vals,'.', label='F1')
-  plt.legend()
-
-# Only run once per dataset, then add it to isbidata.csv
+# Compute Enter/Exit/Division statistics on ground truth ISBI trackings.
 def computeEnterExitCounts(directory):
   isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
 
@@ -219,36 +235,11 @@ def computeEnterExitCounts(directory):
   c.ratio = (c.entries + c.exits ) / c.total
   return c.__dict__
 
-# pretty print nested python structures
-def printscores(scores):
-  print()
-  # key = list(scores.keys())[0]
-  # print(key)
-  def printkv(k,v):
-    if type(v) is float:
-      print(f"{k:20s}{v:.4f}")
-    else:
-      print(f"{k:20s}{v}")
-  print(scores['isbiname'] , scores['dataset'])
-  for k,v in scores[key]['node'].items(): printkv(k,v)
-  for k,v in scores[key]['edge'].items(): printkv(k,v)
-  printkv("delta_t", scores[key]['delta_t'])
-  print(scores[key]['node_confusion'])
-  print(scores[key]['edge_confusion'])
-  print()
-
-
-# TODO
-# directory is e.g. 'path/isbiname/01_GT/TRA/'
-def parseDirectoryName(directory):
-  isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
-
-
-
-def buildGTTrackingStats():
+# Create isbi-tracking-stats-gt.csv
+def csv_IsbiTrackingStatsGT():
   gt_directories = "../data-raw/*/*_GT/TRA/"
   
-  table = list()
+  table = []
   for directory in sorted(glob(gt_directories)):    
     print(directory)
     x = computeEnterExitCounts(directory)
@@ -256,9 +247,10 @@ def buildGTTrackingStats():
   pd.DataFrame(table).to_csv(outdir + 'isbi-tracking-stats-gt.csv')
 
 # entrypoint to build a table of scores over all GT directories
-def scoreAllDirs():
+def csv_scoreAllDirs():
   gt_directories = "../data-raw/*/*_GT/TRA/"
-  
+  gt_directories = "../data-raw/Fluo-C2DL-MSC/02_GT/TRA/"
+  # Fluo-C2DL-MSC
   table = list()
   for directory in sorted(glob(gt_directories)):
         
@@ -285,7 +277,7 @@ skip_experiments = [
   ("PhC-C2DL-PSC", "01_GT", "greedy"),
   ]
 
-def plotTrackingScores():
+def plot_scoreAllDirs():
   df = pd.read_csv("../scoreAllDirs.csv")
 
   df['log10 err-rate'] = np.log10(1 - df['edge-f1']) ## 1 - F1 propto Error Rate
@@ -312,12 +304,66 @@ def plotTrackingScores():
   # plt.show()
   # input()
   # ipdb.set_trace()
-  plt.savefig("../results/plots/plotTrackingScores.pdf")
+  plt.savefig("../results/plots/plot_scoreAllDirs.pdf")
   plt.close()
 
 
+# This function should extract <keyword> phrases from our regex string
+# and 
+def reglob(re_str):
+  c = re.compile(re_str)
 
 
+def getRawImageSizes():
+  for ds in glob('../data-raw/*/*/t000*.tif'):
+    m = re.search('data-raw/')
+    if 't000.tif' not in ds and 't0000.tif' not in ds: continue
+    print(ds, imread(ds).shape)
+
+
+# WIP: helper func. matplot plot for F1 linking scores over time
+def plotscores_bytime(scores):
+
+  times = list(scores.keys())
+
+  # vals = [s.n_gt for s in scores.values()]
+  # plt.plot(times,vals,'o', label='n_gt')
+  # vals = [s.n_proposed for s in scores.values()]
+  # plt.plot(times,vals,'.', label='n_proposed')
+  # vals = [s.n_matched for s in scores.values()]
+  # plt.plot(times,vals,'.', label='n_matched')
+  # plt.legend()
+
+  plt.figure()
+  vals = [s.f1 for s in scores.values()]
+  plt.plot(times,vals,'.', label='F1')
+  plt.legend()
+
+
+### TRAIN/OPTIMIZE LINKING METHODS
+
+def csv_hyperSearch_link_nearestNeib():
+  gt_directories = "../data-raw/*/*_GT/TRA/"
+  
+  table = []
+  for directory in sorted(glob(gt_directories)):
+    print(directory)
+    isbiname, dataset = path.normpath(directory).split(path.sep)[-3:-1]
+    d = f'../cpnet-out/{isbiname}/{dataset}/track-analysis/'
+    gt = pickle.load(open(d + 'gt-tracks.pkl','rb'))
+    dtps = {t:[gt.pts[(t,n)] for n in gt.time2labelset[t]] for t in gt.times}
+    # aniso = [1,1] if '2D' in directory else [1,1,1]
+    isbi = load_isbi_csv(isbiname)
+    aniso = isbi['voxelsize']
+    best = train_link_nearestNeib(gt,aniso)
+    best.isbiname = isbiname
+    best.dataset = dataset
+    table.append(best.__dict__)
+    
+  pd.DataFrame(table).to_csv(outdir + 'hyperSearch_link_nearestNeib.csv')
+
+
+### Save tracking images for each 
 
 def saveTrackingImages(directory):
   directory = "Fluo-C2DL-MSC/"

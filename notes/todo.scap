@@ -1,0 +1,682 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ScappleDocument Version="1.2" ID="6B0C47F6-CFDF-4156-8E90-BA5876568A70">
+  <Notes>
+    <Note ID="0" FontSize="12.0" Position="757.1,151.5" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.9024708867 0.8555303812 0.6288679242</Border>
+        <Fill>0.981199801 0.9303999543 0.6851004362</Fill>
+      </Appearance>
+      <String># Draw tracking tail on top of GT links</String>
+      <ConnectedNoteIDs>19</ConnectedNoteIDs>
+      <PointsToNoteIDs>19</PointsToNoteIDs>
+    </Note>
+    <Note ID="1" FontSize="12.0" Position="431.2,383.0" Width="197.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Evaluate tracking on droso wing</String>
+    </Note>
+    <Note ID="2" FontSize="12.0" Position="218.0,52.0" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Is patch padding effective?</String>
+    </Note>
+    <Note ID="3" FontSize="12.0" Position="446.4,326.9" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Finish detection and tracking on sparse ISBI data</String>
+    </Note>
+    <Note ID="4" FontSize="12.0" Position="445.1,178.2" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Compare vs full instance segmentation methods on C. elegans data</String>
+    </Note>
+    <Note ID="5" FontSize="12.0" Position="929.3,284.6" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Implement More Linking Methods</String>
+      <ConnectedNoteIDs>19</ConnectedNoteIDs>
+      <PointsToNoteIDs>19</PointsToNoteIDs>
+    </Note>
+    <Note ID="6" FontSize="12.0" Position="79.0,297.0" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199764848 0.8974809647 0.6336729527</Border>
+        <Fill>0.7837 0.9758 0.6903</Fill>
+      </Appearance>
+      <String># Oversaturated glance patches</String>
+    </Note>
+    <Note ID="7" FontSize="12.0" Position="1378.4,558.3" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Simulate smooth warp fields to test velgrad tracker</String>
+      <ConnectedNoteIDs>23</ConnectedNoteIDs>
+      <PointsToNoteIDs>23</PointsToNoteIDs>
+    </Note>
+    <Note ID="8" FontSize="12.0" Position="79.0,339.0" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199764848 0.8974809647 0.6336729527</Border>
+        <Fill>0.7837 0.9758 0.6903</Fill>
+      </Appearance>
+      <String># Why is cluster disk throughput slow?</String>
+    </Note>
+    <Note ID="9" FontSize="12.0" Position="78.8,255.4" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199764848 0.8974809647 0.6336729527</Border>
+        <Fill>0.7837 0.9758 0.6903</Fill>
+      </Appearance>
+      <String># Move dataset specific params to CSV</String>
+    </Note>
+    <Note ID="11" FontSize="12.0" Position="214.9,85.9" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Implement augmentations from MICCAI submission</String>
+    </Note>
+    <Note ID="12" FontSize="12.0" Position="215.4,135.9" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Prediction time augmentation</String>
+    </Note>
+    <Note ID="13" FontSize="12.0" Position="744.4,415.0" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Allow cells to enter and exit through boundaries</String>
+      <ConnectedNoteIDs>21, 25</ConnectedNoteIDs>
+      <PointsToNoteIDs>21</PointsToNoteIDs>
+    </Note>
+    <Note ID="14" FontSize="12.0" Position="745.5,331.5" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199762464 0.8974809647 0.633672893</Border>
+        <Fill>0.7837004066 0.9758002162 0.690300107</Fill>
+      </Appearance>
+      <String># Why does NN linking fail on BF-C2DL-MuSC ?</String>
+      <ConnectedNoteIDs>21</ConnectedNoteIDs>
+      <PointsToNoteIDs>21</PointsToNoteIDs>
+    </Note>
+    <Note ID="15" FontSize="12.0" Position="1064.8,72.1" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199764848 0.8974809647 0.6336729527</Border>
+        <Fill>0.7837 0.9758 0.6903</Fill>
+      </Appearance>
+      <String># How many enter/exits are there for each GT dataset?</String>
+      <ConnectedNoteIDs>19</ConnectedNoteIDs>
+      <PointsToNoteIDs>19</PointsToNoteIDs>
+    </Note>
+    <Note ID="16" FontSize="12.0" Position="1052.4,524.1" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Hyperparameter Tuning for Detection and Tracking</String>
+      <ConnectedNoteIDs>25</ConnectedNoteIDs>
+    </Note>
+    <Note ID="17" FontSize="12.0" Position="214.0,185.0" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Dynamically adjust batch size to optimize training throughput</String>
+    </Note>
+    <Note ID="18" FontSize="12.0" Position="1246.0,377.9" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Make a C lib or static linked lib that offers tracking methods that compete head-to-head with TrackMate</String>
+      <ConnectedNoteIDs>19</ConnectedNoteIDs>
+    </Note>
+    <Note ID="19" FontSize="12.0" Position="1157.3,313.6" Width="186.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Evaluate Linking Methods on
+GT Isbi Data with Fault Injection</String>
+      <ConnectedNoteIDs>0, 5, 15, 18, 21, 29</ConnectedNoteIDs>
+      <PointsToNoteIDs>18, 29</PointsToNoteIDs>
+    </Note>
+    <Note ID="21" FontSize="12.0" Position="965.1,413.7" Width="161.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Fix stupid NN linking errors</String>
+      <ConnectedNoteIDs>13-14, 19</ConnectedNoteIDs>
+      <PointsToNoteIDs>19</PointsToNoteIDs>
+    </Note>
+    <Note ID="22" FontSize="12.0" Position="1546.0,295.0" Width="131.0">
+      <Appearance>
+        <Alignment>Center</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>paper on isbi tracking</String>
+      <ConnectedNoteIDs>29</ConnectedNoteIDs>
+    </Note>
+    <Note ID="23" FontSize="12.0" Position="1512.0,454.5" Width="175.0">
+      <Appearance>
+        <Alignment>Center</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>paper on Strain Cost Tracking</String>
+      <ConnectedNoteIDs>7</ConnectedNoteIDs>
+    </Note>
+    <Note ID="25" FontSize="12.0" Position="666.0,563.2" Width="106.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.9024708867 0.8555303812 0.6288679242</Border>
+        <Fill>0.981199801 0.9303999543 0.6851004362</Fill>
+      </Appearance>
+      <String>tune DUB param</String>
+      <ConnectedNoteIDs>13, 16</ConnectedNoteIDs>
+      <PointsToNoteIDs>13, 16</PointsToNoteIDs>
+    </Note>
+    <Note ID="27" FontSize="12.0" Position="446.9,277.9" Width="169.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String># Why isn't Fluo-N3DH-CE accuracy at 0.99 ?</String>
+    </Note>
+    <Note ID="29" FontSize="12.0" Position="1373.7,299.3" Width="113.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Re-submit to CTC</String>
+      <ConnectedNoteIDs>19, 22</ConnectedNoteIDs>
+      <PointsToNoteIDs>22</PointsToNoteIDs>
+    </Note>
+    <Note ID="31" FontSize="12.0" Position="567.0,1191.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Add linking methods (in zig)
+- specify Model (arch), Inference, &amp; Training !</String>
+      <ConnectedNoteIDs>44</ConnectedNoteIDs>
+    </Note>
+    <Note ID="32" FontSize="12.0" Position="567.0,1254.0" Width="184.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>visualize linking errors with tails</String>
+    </Note>
+    <Note ID="34" FontSize="12.0" Position="567.0,1289.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>quantify linking errors with table and plots</String>
+      <ConnectedNoteIDs>55</ConnectedNoteIDs>
+    </Note>
+    <Note ID="35" FontSize="12.0" Position="887.0,917.0" Width="83.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>nearest neib</String>
+    </Note>
+    <Note ID="36" FontSize="12.0" Position="888.0,947.0" Width="139.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>greedy with constraints</String>
+    </Note>
+    <Note ID="37" FontSize="12.0" Position="887.0,975.0" Width="63.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>munkres</String>
+    </Note>
+    <Note ID="38" FontSize="12.0" Position="130.0,1268.0" Width="47.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>paper</String>
+    </Note>
+    <Note ID="39" FontSize="12.0" Position="130.0,1296.0" Width="87.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>linking library</String>
+    </Note>
+    <Note ID="41" FontSize="12.0" Position="887.0,1003.0" Width="49.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>viterbi</String>
+    </Note>
+    <Note ID="42" FontSize="12.0" Position="887.0,1031.0" Width="145.5">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>ILP (branch and cut)
+- local solve + stitching</String>
+    </Note>
+    <Note ID="46" FontSize="12.0" Position="887.0,1075.0" Width="162.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>velgrad 
+- fast solver with lookahead</String>
+    </Note>
+    <Note ID="48" FontSize="16.0" Position="925.0,869.0" Width="83.8">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Methods</String>
+    </Note>
+    <Note ID="53" FontSize="12.0" Position="314.0,1241.0" Width="156.5">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Compare linking methods 
+on ISBI GT data with Fault Injection</String>
+      <ConnectedNoteIDs>40, 43</ConnectedNoteIDs>
+      <PointsToNoteIDs>43</PointsToNoteIDs>
+    </Note>
+    <Note ID="55" FontSize="12.0" Position="877.0,1306.0" Width="208.4">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199762464 0.8974809647 0.633672893</Border>
+        <Fill>0.7837004066 0.9758002162 0.690300107</Fill>
+      </Appearance>
+      <String>scoreAllDirs.csv
+
+Row: dataset x acquisition x method
+Col: metrics</String>
+      <ConnectedNoteIDs>34</ConnectedNoteIDs>
+      <PointsToNoteIDs>34</PointsToNoteIDs>
+    </Note>
+    <Note ID="56" FontSize="12.0" Position="877.0,1376.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1">0.7199762464 0.8974809647 0.633672893</Border>
+        <Fill>0.7837004066 0.9758002162 0.690300107</Fill>
+      </Appearance>
+      <String>plotTrackingScores.pdf
+
+Y: dataset x acquisition
+X: method F1 link score</String>
+    </Note>
+    <Note ID="57" FontSize="12.0" Position="567.0,1341.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Add realistic, parameterized fault injection</String>
+      <ConnectedNoteIDs>58, 87</ConnectedNoteIDs>
+    </Note>
+    <Note ID="58" FontSize="12.0" Position="670.0,1438.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>- add detections randomly
+- add detections near existing 
+- remove detections randomly
+
+- add noise to detection positions
+- add small, correlated shift to positions to test StructN2V
+
+
+NOTE!!! These effects should mirror the Physical and Statistical Models of Movement ?</String>
+      <ConnectedNoteIDs>57</ConnectedNoteIDs>
+      <PointsToNoteIDs>57</PointsToNoteIDs>
+      <Formatting>
+        <FormatRange Italic="Yes">226,44</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="60" FontSize="12.0" Position="1135.0,801.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Method PreProcessing
+
+- align center of mass
+- align bounding box
+- align principal components (rotation and scale)
+- align via optimization / objective
+
+Method PostProcessing
+
+- prune short branches
+- fill short gaps</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,20</FormatRange>
+        <FormatRange Bold="Yes">154,21</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="66" FontSize="12.0" Position="1135.0,997.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Low Level Algorithms
+
+- Greedy
+- KNN
+- Munkres
+- Viterbi
+- ILP
+  - Branch and cut / etc
+- StructN2V
+  - Voronoi (2D and 3D)
+  - Greedyish with small lookahead</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,20</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="77" FontSize="12.0" Position="887.0,1117.0" Width="85.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>random links</String>
+    </Note>
+    <Note ID="80" FontSize="12.0" Position="1454.0,1223.0" Width="418.2">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Is there a way I can organize and categorize linking methods more systematically? I think categorizing by the order of the costs and specific constraints obeyed is well defined. The problem is that we’re not really exploring the full product space, as constraints and costs both get more complex together. So this approach suggests things that might not really make sense like VelGrad Tracker without division constraints.
+
+Does that make sense?
+
+
+</String>
+      <Formatting>
+        <FormatRange Italic="Yes">377,47</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="81" FontSize="12.0" Position="96.0,918.0" Width="398.6">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Release the library and paper together. Use Gurobi for paper evals, but eventually put it in the library. Re-implement the Bjoern Andres version. Your lib can be distributed as Zig + C source where you edit in Zig and compile to C so it’s available / buildable for all machines with a C compiler.</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,39</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="83" FontSize="12.0" Position="122.0,1206.0" Width="116.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Win CTC with best
+method</String>
+    </Note>
+    <Note ID="84" FontSize="12.0" Position="1367.0,801.0" Width="334.2">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Physical and Statistical Models of Object Movement
+
+Global
+- stage jitter
+- muscle contraction / twitch
+- tissue / membrane damage from slicing slide
+- 
+
+1
+- Object appearance (NA for linking)
+- Distance to boundary
+- Object orientation determines movement?
+
+2
+- Euclidean distance
+- Appearance / visual similarity (size, shape)
+
+3
+- Momentum/Inertia
+- Division springs / alignment
+- Lower likelihood for divisions (a priori)
+
+4
+- Velocity/Displacement Gradients
+
+&gt; 4
+- gap shapes 
+- constellations of nearby cells that move as a unit
+- local flows
+</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,50</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="87" FontSize="12.0" Position="452.0,1440.0" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>- Real GT cell tracks from ISBI acquisitions
+- Simulated GT cell tracks made up from nothing?</String>
+      <ConnectedNoteIDs>57</ConnectedNoteIDs>
+      <PointsToNoteIDs>57</PointsToNoteIDs>
+    </Note>
+    <Note ID="88" FontSize="26.0" Position="953.5,1667.4" Width="243.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>zig-tracker Project</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,19</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="89" FontSize="12.0" Position="633.9,1737.4" Width="252.7">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Rendering
+
+Tracking cells with greedy 
+approach
+  - requires KNN / fast lookup ds
+
+
+
+
+
+
+
+
+
+
+
+</String>
+    </Note>
+    <Note ID="90" FontSize="12.0" Position="910.3,1738.2" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Merge zig-tracker with cpnet3 and isbi-tracking experiment. 
+Make a standalone library that does the ILP tracking, strain tracking ± heuristic solver, 
+Render tracking solutions on screen and allow for interactive editing… 
+
+The simplest, smallest useful contribution would be a python interface to a fast, heuristic StrainCost solver (if it were as good as the ILP version). 
+
+A second, independent thing is the isbi tracking evaluation. This is a much bigger thing!
+
+A third is releasing a paper and a fourth is releasing a tracking library with many tools.
+
+A fifth is releasing a GUI.</String>
+    </Note>
+    <Note ID="92" FontSize="12.0" Position="1165.8,1740.3" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>What do we need for the python interface + fast strain cost solver? 
+
+First, we need to know if the fast strain cost solver is possible without sacrificing quality. We can re-eval the Thesis experiments? We could generate artificial data? (This ties in with ISBI)
+
+We would need. 
+1. Simulated random points
+2. Simulated random smooth warp
+3. Voronoi / Delaunay (or any similar tiling?)
+4. 
+</String>
+    </Note>
+    <Note ID="93" FontSize="12.0" Position="1473.3,1799.2" Width="200.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Simulated smooth warp data for testing</String>
+    </Note>
+    <Note ID="94" FontSize="12.0" Position="1476.3,1841.2" Width="197.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>A comparison method (greedy nn)</String>
+    </Note>
+    <Note ID="95" FontSize="12.0" Position="1476.3,1869.2" Width="133.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>visualization with SDL</String>
+    </Note>
+    <Note ID="96" FontSize="12.0" Position="1476.3,1897.2" Width="163.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>working strain_cost method</String>
+    </Note>
+    <Note ID="97" FontSize="12.0" Position="1496.3,1925.2" Width="115.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>voronoi / delaunay</String>
+    </Note>
+    <Note ID="98" FontSize="26.0" Position="1042.0,736.0" Width="227.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>CPNet - 3 Project</String>
+      <Formatting>
+        <FormatRange Bold="Yes">0,17</FormatRange>
+      </Formatting>
+    </Note>
+    <Note ID="99" FontSize="12.0" Position="99.0,1012.0" Width="283.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="1"/>
+      </Appearance>
+      <String>Only use zig when the python impl suffers unfairly.</String>
+    </Note>
+  </Notes>
+  <BackgroundShapes>
+    <Shape ID="44" Position="876.0,907.0" Width="195.0" Sticky="yes" Height="271.0">
+      <Appearance>
+        <Border Weight="1"/>
+      </Appearance>
+      <ConnectedNoteIDs>31</ConnectedNoteIDs>
+      <PointsToNoteIDs>31</PointsToNoteIDs>
+    </Shape>
+    <Shape ID="40" Position="543.0,1173.0" Width="254.0" Sticky="yes" Height="233.0">
+      <Appearance>
+        <Border Weight="1"/>
+      </Appearance>
+      <ConnectedNoteIDs>53</ConnectedNoteIDs>
+      <PointsToNoteIDs>53</PointsToNoteIDs>
+    </Shape>
+    <Shape ID="43" Position="108.0,1157.0" Width="137.0" Sticky="yes" Height="200.0">
+      <Appearance>
+        <Border Weight="1"/>
+      </Appearance>
+      <ConnectedNoteIDs>53</ConnectedNoteIDs>
+    </Shape>
+  </BackgroundShapes>
+  <Stacks>
+    <Stack>6, 8</Stack>
+    <Stack>37, 41-42</Stack>
+    <Stack>38-39</Stack>
+    <Stack>46, 77</Stack>
+    <Stack>55-56</Stack>
+    <Stack>94-96</Stack>
+  </Stacks>
+  <AutoFit>1-2, 19, 21-23, 25, 29, 32, 35-39, 41, 46, 66, 77, 83, 88, 94-99</AutoFit>
+  <NoteStyles>
+    <Style Name="Bubble (Blue)" ID="305477D8-8405-4815-9480-B65609380253" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.668962 0.810287 0.895092</BorderColor>
+      <FillColor>0.743291 0.900319 0.994547</FillColor>
+    </Style>
+    <Style Name="Bubble (Green)" ID="144B3849-60B3-440A-BE2A-8EF80067F6F7" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.669404 0.885265 0.567007</BorderColor>
+      <FillColor>0.743783 0.983628 0.630008</FillColor>
+    </Style>
+    <Style Name="Bubble (Pink)" ID="CF36A0D3-0AD3-4609-8E45-C6C362766538" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.894547 0.707772 0.715904</BorderColor>
+      <FillColor>0.989115 0.814114 0.999483</FillColor>
+    </Style>
+    <Style Name="Bubble (Red)" ID="E9C9D95A-1D32-434D-A51C-A6B3A19F23E2" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.894547 0.707772 0.715904</BorderColor>
+      <FillColor>0.993942 0.786413 0.795449</FillColor>
+    </Style>
+    <Style Name="Bubble (Yellow)" ID="82DC84FB-5367-45D6-8447-D3AFFF815112" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.877748 0.828289 0.562126</BorderColor>
+      <FillColor>0.975275 0.920321 0.624585</FillColor>
+    </Style>
+    <Style Name="Red Text" ID="013C3C13-2E31-4AE2-A546-D045A933367C" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="Yes" AffectNoteBody="No" AffectFade="No">
+      <TextColor>0.985954 0.0 0.02694</TextColor>
+    </Style>
+    <Style Name="Title Text" ID="C5717D47-B932-44FF-92CC-4DAFC9E3FE9D" AffectFontStyle="Yes" AffectAlignment="Yes" AffectTextColor="No" AffectNoteBody="No" AffectFade="No">
+      <FontSize>28.0</FontSize>
+      <IsBold>Yes</IsBold>
+    </Style>
+  </NoteStyles>
+  <UISettings>
+    <BackgroundColor>0.999763 0.988395 0.949915</BackgroundColor>
+    <DefaultFont>Helvetica</DefaultFont>
+    <NoteXPadding>8.0</NoteXPadding>
+  </UISettings>
+  <PrintSettings PaperSize="612.0,792.0" LeftMargin="72.0" RightMargin="72.0" TopMargin="90.0" BottomMargin="90.0" PaperType="na-letter" Orientation="Portrait" HorizontalPagination="Clip" VerticalPagination="Auto" ScaleFactor="1.0" HorizontallyCentered="Yes" VerticallyCentered="Yes" Collates="Yes" PagesAcross="1" PagesDown="1"/>
+</ScappleDocument>
