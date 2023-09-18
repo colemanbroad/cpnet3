@@ -65,7 +65,7 @@ def plotHistory(isbiname):
   try:
     # history = load_pkl(f"/Users/broaddus/Desktop/mpi-remote/project-broaddus/cpnet3/cpnet-out/{isbiname}/train/history.pkl")
     # history = load_pkl(PR.savedir/"train/history.pkl")
-    history = load_pkl(f"/Users/broaddus/Desktop/work/isbi/cpnet3/cpnet-out/{isbiname}/train/history.pkl")
+    history = load_pkl(f"/Users/broaddus/work/isbi/cpnet3/cpnet-out/{isbiname}/train/history.pkl")
   except:
     return
 
@@ -164,10 +164,9 @@ def plotMetrics():
   # plt.show()
   # input()
   # ipdb.set_trace()
-  plt.savefig("plots/precision-recall.pdf")
-
-
-
+  savedir = r"/Users/broaddus/work/isbi/cpnet3/results/plots/"
+  plt.savefig(savedir + "precision-recall-newie.pdf")
+  # plt.savefig("../results/plots/precision-recall.pdf")
 
 
 

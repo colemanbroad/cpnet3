@@ -70,7 +70,7 @@ import torch
 savedir = Path("test_scipyzoom")
 # wipedir(savedir)
 
-# img = load_tif("/Users/broaddus/Desktop/work/cpnet3/data-raw/Fluo-C3DH-A549/01/t000.tif").astype(np.float32)
+# img = load_tif("/Users/broaddus/work/cpnet3/data-raw/Fluo-C3DH-A549/01/t000.tif").astype(np.float32)
 
 # res = skimage.measure.block_reduce(img, (1,2,2), np.mean)
 # save_tif(savedir / f"a549-br-2.png", img2png(res, 'I', normalize_intensity=True))
@@ -141,14 +141,14 @@ plt.plot(x1,y1,'-o')
 # print(20/11)
 # print(zoom())
 
-# img = load_tif("/Users/broaddus/Desktop/work/cpnet3/data-raw/DIC-C2DH-HeLa/01/t000.tif")
+# img = load_tif("/Users/broaddus/work/cpnet3/data-raw/DIC-C2DH-HeLa/01/t000.tif")
 
 # res = norm_percentile01(zoom(img.astype(np.float32),0.25,order=1,prefilter=True) , 2, 99.4)
 # save_tif(savedir / "convert-norm-zoom0.25-order1-pftrue.tif", res)
 # res = norm_percentile01(zoom(img.astype(np.float32),0.25,order=1,prefilter=False) , 2, 99.4)
 # save_tif(savedir / "convert-norm-zoom0.25-order1-pffalse.tif",res)
 
-# for imgname in glob("/Users/broaddus/Desktop/work/cpnet3/data-raw/*/01/t000.tif"):
+# for imgname in glob("/Users/broaddus/work/cpnet3/data-raw/*/01/t000.tif"):
 # 	img = load_tif(imgname)
 # 	print(img.dtype)
 # assert False

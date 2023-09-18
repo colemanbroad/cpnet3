@@ -1,4 +1,4 @@
-# /Users/broaddus/Desktop/work/cpnet3/data-raw/Fluo-C3DH-A549/01_GT/SEG/man_seg027.tif
+# /Users/broaddus/work/cpnet3/data-raw/Fluo-C3DH-A549/01_GT/SEG/man_seg027.tif
 
 import numpy as np
 import re

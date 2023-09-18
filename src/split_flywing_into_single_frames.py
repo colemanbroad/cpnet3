@@ -35,7 +35,7 @@ from skimage.segmentation      import find_boundaries
 from tifffile                  import imread,imsave
 
 
-os.chdir("/Users/broaddus/Desktop/work/isbi/cpnet3/")
+os.chdir("/Users/broaddus/work/isbi/cpnet3/")
 raw = imread("data-noisbi/care_flywing_crops/gt_initial_stack.tif")
 gt_segment = imread("data-noisbi/care_flywing_crops/gt_true_track_consistent.tif")
 

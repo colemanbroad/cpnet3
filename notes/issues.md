@@ -1,9 +1,12 @@
-# Draw tracking tail on top of GT links
+# #23 Draw tracking tail on top of GT links
 
 Show how predictions compare with GT visually. For detection we show detected
 centerpoints right next to each other so it's obvious if they match. How can
 we do the same thing for tracking (with GT) so that the differences are
-visually apparent?
+visually apparent? 
+
+- when using different detections we can draw both GT and YP in different colors but blend them when they overlap with 0.5 alpha.
+- This is now done and implemented in the [biopencil] project.
 
 # Evaluate tracking on droso wing
 
@@ -129,7 +132,7 @@ _Pre and Post processing_
 # Oversaturated glance patches
 
 Q: Why do the raw parts of the training data patches look oversaturated?
-    [see here](file:///Users/broaddus/Desktop/work/cpnet3/inspect_data/Fluo-N3DH-SIM+-t095-d1600.png)
+    [see here](file:///Users/broaddus/work/cpnet3/inspect_data/Fluo-N3DH-SIM+-t095-d1600.png)
 A: Bug in png creation
 
 
@@ -192,7 +195,10 @@ After talking with Antithesis:
 
 A cell is likely to have entered through the boundary if it is closer to the boundary than to any parent? No, because sometimes cells hang out near image edges. If the cell is close to boundary and no cell is near in previous frame then it is an entry.
 
-
+For `link_nearestNeib()` I already allow for Enter/Exit by virtue of the distance_upper_bound (dub) parameter. 
+The dub is a hard cutoff, so any time I have a potential parent within dub, it gets assigned.
+So why do we still perform poorly on the datasets with significant Enter/Exit?
+I don't know... So I'm going to work on drawing the tracking tails to determine the cause. see #23
 
 
 # Why does NN tracking fail on BF-C2DL-MuSC ?
@@ -208,25 +214,38 @@ Actually, there are five datasets that don't do well with NN linking on GT pts.
 Fluo-C2DL-MSC       02    0.934911 - 0.064 enters / exits
 BF-C2DL-MuSC        01    0.956835 - false divisons from dense packing ? 
 Fluo-C3DH-H157      02    0.962199 - 0.082 enters / exits
-Fluo-C3DL-MDA231    02    0.9746 - 0.036 enters / exits
+Fluo-C3DL-MDA231    02    0.9746   - 0.036 enters / exits
 BF-C2DL-MuSC        02    0.975593 - dunno ? 
 
 Let's start with the worst one, Fluo-C2DL-MSC/02.
 
 - A small number of cells so any errors are costly.
-- The cells are constantly appearing and disappearing! It's actually amazing
-  that we get 0.93 F1 at all, given that we guarantee a mistake whenever a cell enters the FoV through an image boundary.
+- ~~The cells are constantly appearing and disappearing! It's actually amazing that we get 0.93 F1 at all, given that we guarantee a mistake whenever a cell enters the FoV through an image boundary.~~
+!!! FOUND THE ISSUE !!! 
+Looking at the actual tracking errors made the issue is obvious: sometimes the cells move more than 100px, so we just have to increase the cutoff distance. 
+This should also be apparent in our `dub` hyperparam tuning. 
 - The 01 acquisition has more cells and they don't enter through the boundaries as often.
 
 Potential solution: add a distance cutoff to the edges and allow for edges without parents.
 
 Now BF-C2DL-MuSC/01.
 
-The cells crawl around in a dish, so no cells enter or leave the FoV through the image boundaries. But they do divide A LOT towards the end of the series. It goes from 1 to 24 cells from t=911 to t=1376. If we plot the F1 score over time I bet all the errors are at the end. 
+The cells crawl around in a dish, so no cells enter or leave the FoV through the image boundaries. But they do divide A
+LOT towards the end of the series. It goes from 1 to 24 cells from t=911 to t=1376. If we plot the F1 score over time I
+bet all the errors are at the end.
 
 -[x] ![write code to make this plot](f1-over-time.png).
+!!! Found the issue !!!
 
-The banding in the plot show that we have discrete numbers of errors starting with zero. It's true! The F1 score for this dataset drops dramatically towards the end of the timeseries and fluctuates wildly. It would be nice to know _exactly where_ the problems arose. What kind of movements / divisions / etc cause these problems. see #23. 
+see /Users/broaddus/work/isbi/cpnet3/cpnet-out/BF-C2DL-MuSC/01_GT/track-analysis/png/lab1200.png through 1230.
+
+The problem with this dataset is that there are clusters of three or four cells touching each other but they have
+large displacements! So this means that the nearest parent is often wrong. _Maybe we can fix this with a higher cost for
+divisions? i.e. only use divisions when necessary._ (This is the answer.)
+
+The banding in the plot show that we have discrete numbers of errors starting with zero. It's true! The F1 score for
+this dataset drops dramatically towards the end of the timeseries and fluctuates wildly. It would be nice to know
+_exactly where_ the problems arose. What kind of movements / divisions / etc cause these problems. see #23.
 
 _These scores are an indictment of the nearest parent strategy?_
 
@@ -271,16 +290,22 @@ Collecting the solutions above we have:
 Let's build a table that computes the stats for every GT dataset. We want to cache (pickle) the tracking so we don't have to load, and we want to process it and compute Divisions, Entries, Exits and the total number of objects over all times. Note, that a single object can count for both an Entry and an Exit at once, or an Entry and a Division.
 
 
+
 # Hyperparameter Tuning for Detection and Tracking
+
+Every method with parameters needs it's own tuning! For the simplest methods
+the tuning can be done quickly, by eye. Or maybe we could get away with an
+educated guess. But for most methods it's appropriate to use some kind of
+hyper-optimization routine. The choice of routine depends on the structure of
+the parameter space we're exploring, wether we can take gradients, the cost
+to evaluate the function and loss, and the shape of the loss over that
+parameter space. 
 
 # Dynamically adjust batch size to optimize training throughput
 
+
+
 # Make a C lib or static linked lib that offers tracking methods that compete head-to-head with TrackMate
-
-
-
-
-
 
 
 
