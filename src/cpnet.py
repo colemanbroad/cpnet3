@@ -105,8 +105,10 @@ def createTarget(pts, target_shape, sigmas):
 
   return target
 
-## Build a list of slices that can tile an image into potentially overlapping
-## (outer) patches, but that also contain a NON-overlapping (inner) subregion.
+"""
+Build a list of slices that can tile an image into potentially overlapping
+(outer) patches, but that also contain a NON-overlapping (inner) subregion.
+"""
 def splitIntoPatches(img_shape, desired_outer_shape, min_border_shape, divisor):
   """
   Split image into non-overlapping `inner` rectangles that exactly cover
@@ -182,7 +184,9 @@ def splitIntoPatches(img_shape, desired_outer_shape, min_border_shape, divisor):
   return samples
 
 
-## rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
+"""
+rescale pts to be consistent with scipy.ndimage.zoom(img,scale)
+"""
 def zoom_pts(pts,scale):
   # assert type(pts) is np.ndarray
   pts = pts+0.5                         ## move origin from middle of first bin to left boundary (array index convention)
@@ -191,8 +195,10 @@ def zoom_pts(pts,scale):
   pts = np.round(pts).astype(np.uint32) ## binning
   return pts
 
-## guarantees that result is divisible by PR.divisor
-## return exact zoom value so detections can be re-scaled properly
+"""
+guarantees that result is divisible by PR.divisor
+return exact zoom value so detections can be re-scaled properly
+"""
 def zoom_img_make_divisible(raw,zoomtuple,divisor):
   z = zoomtuple
   s = array(raw.shape)
@@ -202,9 +208,11 @@ def zoom_img_make_divisible(raw,zoomtuple,divisor):
   assert all(array(raw.shape) % divisor == 0)
   return raw, z2
 
-## guarantees that result is divisible by PR.divisor in every dimension for any size
-## return padding value for prediction so it can be removed
-## padding always on right side so it doesn't shift pts coordinates.
+"""
+guarantees that result is divisible by PR.divisor in every dimension for any size
+return padding value for prediction so it can be removed
+padding always on right side so it doesn't shift pts coordinates.
+"""
 def pad_until_divisible(img,divisor):
     rs = array(img.shape)
     desired_rawsize = ceil(rs/divisor)*divisor
@@ -214,9 +222,11 @@ def pad_until_divisible(img,divisor):
     assert all(array(img.shape) % divisor == 0)
     return img, padding
 
-## x : image::ndarray
-## kind : in ['I','L'] for "Intensity" / "Label"
-## colors : colormap
+"""
+x : image::ndarray
+kind : in ['I','L'] for "Intensity" / "Label"
+colors : colormap
+"""
 def img2png(x, kind, colors=None, normalize_intensity=True):
   
   assert kind in ['I','L']
@@ -282,10 +292,12 @@ def img2png(x, kind, colors=None, normalize_intensity=True):
 
   return x
 
-# ## In order to draw tails on our timeseries tracking we need a tracking
-# ## result. First, let's draw tails from one result without worrying about
-# ## GT results or matching them together.
-# def plotTailsOnImg(tracking,image):
+"""
+In order to draw tails on our timeseries tracking we need a tracking
+result. First, let's draw tails from one result without worrying about
+GT results or matching them together.
+def plotTailsOnImg(tracking,image):
+"""
 def norm_minmax01(x):
   hi = x.max()
   lo = x.min()
@@ -301,11 +313,13 @@ def norm_percentile01(x,p0,p1):
   else: 
     return (x-lo)/(hi-lo)
 
-## Load `isbi-stats.csv` from disk and create a dictionary of params
-## associated with a given `isbiname`
-## WARNING: We attempt to interpret all cells in the table as python, and
-## only fall back to `str` on failure. If we WANT a string, we have to wrap it in
-## extra quotes, or ensure that `literal_eval()` fails.
+"""
+Load `isbi-stats.csv` from disk and create a dictionary of params
+associated with a given `isbiname`
+WARNING: We attempt to interpret all cells in the table as python, and
+only fall back to `str` on failure. If we WANT a string, we have to wrap it in
+extra quotes, or ensure that `literal_eval()` fails.
+"""
 def load_isbi_csv(isbiname):
 
   def parse(x):

@@ -7,6 +7,7 @@ from pointmatch import snnMatch, build_scores
 # from cpnet import load_isbi_csv
 import os
 import pickle
+import json
 
 from collections import defaultdict
 from numba import jit
@@ -29,9 +30,11 @@ def ceil(x): return np.ceil(x).astype(int)
 def floor(x): return np.floor(x).astype(int)
 
 
-# Add the ISBI labeling `tb.toisbi` to the tracking. Create the labels by
-# forming a stack of unlabeled nodes and walking down the lineage tree depth
-# first.
+"""
+Add the ISBI labeling `tb.toisbi` to the tracking. Create the labels by
+forming a stack of unlabeled nodes and walking down the lineage tree depth
+first.
+"""
 def addIsbiLabels2(tb):
   
   # ISBI Labels for each node by incrementing a global track_id
@@ -63,12 +66,14 @@ def addIsbiLabels2(tb):
   
   tb.toisbi = labels
 
-# Add the ISBI labeling `tb.toisbi` to the tracking via a nested loop over
-# times and nodes[time]. The inverse `isbi2nodeset` makes it easy to find
-# short stubs in the lineage tree via 
-# 
-#           sorted(tb.isbi2nodeset.values(), key=lambda v: len(v))
-# 
+"""
+Add the ISBI labeling `tb.toisbi` to the tracking via a nested loop over
+times and nodes[time]. The inverse `isbi2nodeset` makes it easy to find
+short stubs in the lineage tree via 
+
+          sorted(tb.isbi2nodeset.values(), key=lambda v: len(v))
+
+"""
 def addIsbiLabels(tb):
 
   labels = dict()
@@ -92,8 +97,11 @@ def addIsbiLabels(tb):
   tb.toisbi = labels
 
 
-# Classify all nodes into 'enter', 'exit', and 'move' and classify all links
-# into 'move' and 'divide'.
+"""
+Classify all nodes into 'enter', 'exit', and 'move' and classify all links
+into 'move' and 'divide'.
+"""
+
 def addNodeClassification(tb):
 
   labels = dict()
@@ -202,13 +210,15 @@ def pruneSingletonBranches(tb):
 #         for j in prange(width_out):
 
 
-# ltps: list of pts for each time
-# aniso: the pixel/voxel size (relative)
-# dub: distance upper bound for child-parent connections (in pixels)
-# When a node (time,label) has no parent we map it to (time-1, 0)
-# i.e. label zero serves as the background label
-# We use the index into ltps as the initial label, but convert
-# this label to the ISBI scheme for most processing
+"""
+ltps: list of pts for each time
+aniso: the pixel/voxel size (relative)
+dub: distance upper bound for child-parent connections (in pixels)
+When a node (time,label) has no parent we map it to (time-1, 0)
+i.e. label zero serves as the background label
+We use the index into ltps as the initial label, but convert
+this label to the ISBI scheme for most processing
+"""
 # TODO: change dub -> `max_parent_distance`
 def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   parents = dict()
@@ -252,7 +262,7 @@ def link_nearestNeib(*,dtps,aniso=(1,1),dub=100):
   conformTracking(tb)
   return tb
 
-import json
+
 
 def save_tb_as_json(tb):
   tracked_cells = []
