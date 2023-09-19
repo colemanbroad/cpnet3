@@ -1,4 +1,5 @@
 
+from cpnet import img2png, norm_minmax01
 from tracking2 import *
 from time import time
 from scipy.ndimage import zoom
@@ -7,6 +8,7 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import seaborn as sns
 from skimage.io import imsave
+from cpnet import load_isbi_csv
 
 """
 Wed Mar 29, 2023
@@ -160,24 +162,22 @@ def computeScores(directory, method):
 
   scores = compare_trackings(gt,yp,aniso,dub)
 
-  ipdb.set_trace()
+  # ipdb.set_trace()
 
-  img_shape = isbi['rawsize 01'] if dataset=='01_GT' else isbi['rawsize 02']
-  g = drawTrackingTailsWithErrorsGenerator(gt, yp, scores['edge_matches'], img_shape)
+  if False:
+    img_shape = isbi['rawsize 01'] if dataset=='01_GT' else isbi['rawsize 02']
+    g = drawTrackingTailsWithErrorsGenerator(gt, yp, scores['edge_matches'], img_shape)
   
-  from cpnet import img2png, norm_minmax01
-
-  os.makedirs(d + 'png/', exist_ok=True)
-  for i,lab in enumerate(g):
-    # if i < 1200: continue
-    # if i == 1231: break
-    raw = imread(f"../data-raw/{isbiname}/{dataset[:2]}/t{i:03d}.tif")
-    # rawpng = img2png(raw, 'I')
-    raw = norm_minmax01(raw)
-    raw = img2png(raw, 'I')
-    composite = np.round(raw/2 + lab/2).astype(np.uint8).clip(min=0,max=255)
-    imsave(d + 'png/' + f'lab{i:04d}.png', composite)
-
+    os.makedirs(d + 'png/', exist_ok=True)
+    for i,lab in enumerate(g):
+      # if i < 1200: continue
+      # if i == 1231: break
+      raw = imread(f"../data-raw/{isbiname}/{dataset[:2]}/t{i:03d}.tif")
+      # rawpng = img2png(raw, 'I')
+      raw = norm_minmax01(raw)
+      raw = img2png(raw, 'I')
+      composite = np.round(raw/2 + lab/2).astype(np.uint8).clip(min=0,max=255)
+      imsave(d + 'png/' + f'lab{i:04d}.png', composite)
 
   node = scores['node']
   edge = scores['edge']
@@ -249,7 +249,7 @@ def csv_IsbiTrackingStatsGT():
 # entrypoint to build a table of scores over all GT directories
 def csv_scoreAllDirs():
   gt_directories = "../data-raw/*/*_GT/TRA/"
-  gt_directories = "../data-raw/Fluo-C2DL-MSC/02_GT/TRA/"
+  # gt_directories = "../data-raw/Fluo-C2DL-MSC/02_GT/TRA/"
   # Fluo-C2DL-MSC
   table = list()
   for directory in sorted(glob(gt_directories)):
@@ -259,7 +259,14 @@ def csv_scoreAllDirs():
     for method in ['nn','nn-prune','greedy','munkres']:
       if (isbiname,dataset,method) in skip_experiments: continue
       print(directory, method)
-      scores = computeScores(directory, method)
+      cachefile = outdir + f'csv_scoreAllDirs/cache-{method}-{isbiname}-{dataset}.pkl'
+      if path.exists(cachefile):
+        scores = pickle.load(open(cachefile,'rb'))
+      else:
+        os.makedirs(path.dirname(cachefile),exist_ok=True)
+        scores = computeScores(directory, method)
+        pickle.dump(scores,open(cachefile,'wb')) 
+
       table.append(scores)
 
   pd.DataFrame(table).to_csv(outdir + "scoreAllDirs2.csv")
@@ -278,33 +285,41 @@ skip_experiments = [
   ]
 
 def plot_scoreAllDirs():
-  df = pd.read_csv("../scoreAllDirs.csv")
+  df = pd.read_csv(outdir + "scoreAllDirs2.csv")
 
-  df['log10 err-rate'] = np.log10(1 - df['edge-f1']) ## 1 - F1 propto Error Rate
+  df['log10 err-rate'] = -np.log10(1 - df['edge-f1']) ## 1 - F1 propto Error Rate
   df['isbiname/dataset'] = df['isbiname'] + ' / ' + df['dataset']
+
+  # ipdb.set_trace()
 
   # sns.set(style='ticks')
   # fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, sharey=True)
   # for idx, row in enumerate(df):
   #   ax.plot(row['edge-f1'], row['isbiname'], c=row['method'])
 
-  facetgrid = sns.relplot(
-    data=df,
-    x='log10 err-rate',
-    y='isbiname/dataset',
-    hue='method',
+  # facetgrid = sns.relplot( data=df, x='log10 err-rate', y='isbiname/dataset', hue='method', height=1.5,  aspect=1,
+  #   # col='isbi',
+  #   # col_wrap=6, 
+  #   # col_order=isbi_sorted.index, 
+  #   )
+  facetgrid = sns.barplot( data=df, x='isbiname/dataset', y='log10 err-rate', hue='method', )
     # col='isbi',
     # col_wrap=6, 
     # col_order=isbi_sorted.index, 
-    height=1.5, 
-    aspect=1,
-    )
-  plt.gcf().set_size_inches(14.12,  9.1)
+  plt.gcf().set_size_inches(20.12,  9.1)
+  
+  ax = plt.gcf().gca()
+  ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+  f = plt.gcf()
 
+  # Shrink current axis by 20%
+  box = ax.get_position()
+  ax.set_position([box.x0, box.y0 + box.height*0.1, box.width * 1.0, box.height])
   # plt.show()
   # input()
   # ipdb.set_trace()
-  plt.savefig("../results/plots/plot_scoreAllDirs.pdf")
+
+  plt.savefig(outdir + "plot_scoreAllDirs.pdf")
   plt.close()
 
 
